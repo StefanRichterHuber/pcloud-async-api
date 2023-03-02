@@ -68,10 +68,31 @@ impl Display for PCloudResult {
 }
 impl std::error::Error for PCloudResult {}
 
-/// Result of the `getpublinkdownload`call
+impl Into<PCloudResult> for reqwest::Error {
+    fn into(self) -> PCloudResult {
+        match self.status() {
+            Some(code) => {
+                if code.is_client_error() {
+                    // TODO find better mapping
+                    PCloudResult::ConnectionBroken
+                } else if code.is_server_error() {
+                    PCloudResult::InternalError
+                } else if code.is_success() {
+                    PCloudResult::Ok
+                } else {
+                    PCloudResult::InternalError
+                }
+            }
+            None => PCloudResult::InternalError,
+        }
+    }
+}
+
+/// Result of the `getpublinkdownload` or `getfilelink` calls
 /// see https://docs.pcloud.com/methods/public_links/getpublinkdownload.html
+/// see https://docs.pcloud.com/methods/streaming/getfilelink.html
 #[derive(Serialize, Deserialize, Debug)]
-pub struct PublicLinkDownload {
+pub struct DownloadLink {
     pub result: PCloudResult,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub path: Option<String>,
@@ -319,6 +340,16 @@ pub struct Metadata {
     pub rotate: Option<u16>,
 }
 
+/// Result of fetching metadata of files or folders
+/// see https://docs.pcloud.com/methods/file/stat.html
+/// see https://docs.pcloud.com/methods/folder/listfolder.html
+#[derive(Serialize, Deserialize, Debug)]
+pub struct FileOrFolderStat {
+    pub result: PCloudResult,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<Metadata>,
+}
+
 /// pCloud Date format for serializing / deserializing
 mod pcloud_date_format {
     use chrono::{DateTime, TimeZone, Utc};
@@ -418,6 +449,7 @@ pub struct PCloudFile {
     pub path: Option<String>,
 }
 
+/// Convert Strings into pCloud file paths
 impl Into<PCloudFile> for &str {
     fn into(self) -> PCloudFile {
         PCloudFile {
@@ -427,6 +459,7 @@ impl Into<PCloudFile> for &str {
     }
 }
 
+/// Convert u64 into pCloud file ids
 impl Into<PCloudFile> for u64 {
     fn into(self) -> PCloudFile {
         PCloudFile {
@@ -436,6 +469,7 @@ impl Into<PCloudFile> for u64 {
     }
 }
 
+/// Extract file id from pCloud file metadata
 impl TryInto<PCloudFile> for &Metadata {
     type Error = PCloudResult;
 
@@ -445,6 +479,54 @@ impl TryInto<PCloudFile> for &Metadata {
         } else {
             Ok(PCloudFile {
                 file_id: self.fileid,
+                path: None,
+            })
+        }
+    }
+}
+
+/// Generic description of a PCloud folder. Either by its file id (preferred) or by its path
+pub struct PCloudFolder {
+    pub folder_id: Option<u64>,
+    pub path: Option<String>,
+}
+
+/// Convert Strings into pCloud folder paths
+impl TryInto<PCloudFolder> for &str {
+    type Error = PCloudResult;
+    fn try_into(self) -> Result<PCloudFolder, PCloudResult> {
+        if self.starts_with("/") {
+            // File paths must always be absolute paths
+            Ok(PCloudFolder {
+                folder_id: None,
+                path: Some(self.to_string()),
+            })
+        } else {
+            Err(PCloudResult::InvalidPath)
+        }
+    }
+}
+
+/// Convert u64 into pCloud folder ids
+impl Into<PCloudFolder> for u64 {
+    fn into(self) -> PCloudFolder {
+        PCloudFolder {
+            folder_id: Some(self),
+            path: None,
+        }
+    }
+}
+
+/// Extract file id from pCloud folder metadata
+impl TryInto<PCloudFolder> for &Metadata {
+    type Error = PCloudResult;
+
+    fn try_into(self) -> Result<PCloudFolder, PCloudResult> {
+        if !self.isfolder {
+            Err(PCloudResult::InvalidFileOrFolderName)
+        } else {
+            Ok(PCloudFolder {
+                folder_id: self.folderid,
                 path: None,
             })
         }

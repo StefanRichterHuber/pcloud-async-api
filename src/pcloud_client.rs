@@ -1,7 +1,124 @@
 use crate::pcloud_model::{self, Diff, PublicFileLink};
 use chrono::{DateTime, Utc};
-use reqwest::Error;
-use serde::de::IntoDeserializer;
+use reqwest::{Error, Response};
+
+pub struct ListFolderRequestBuilder {
+    /// Client to actually perform the request
+    client: PCloudClient,
+    ///
+    path: Option<String>,
+    ///  id of the folder
+    folder_id: Option<u64>,
+    /// If is set full directory tree will be returned, which means that all directories will have contents filed.
+    recursive: bool,
+    ///  If is set, deleted files and folders that can be undeleted will be displayed.
+    showdeleted: bool,
+    ///  If is set, only the folder (sub)structure will be returned.
+    nofiles: bool,
+    /// If is set, only user's own folders and files will be displayed.
+    noshares: bool,
+}
+
+#[allow(dead_code)]
+impl ListFolderRequestBuilder {
+    fn for_folder<T: TryInto<pcloud_model::PCloudFolder>>(
+        client: &PCloudClient,
+        folder_like: T,
+    ) -> Result<ListFolderRequestBuilder, pcloud_model::PCloudResult> {
+        let folder = folder_like.try_into();
+
+        match folder {
+            Ok(f) => {
+                if f.folder_id.is_some() {
+                    Ok(ListFolderRequestBuilder {
+                        folder_id: f.folder_id,
+                        path: f.path,
+                        client: client.clone(),
+                        recursive: false,
+                        showdeleted: false,
+                        nofiles: false,
+                        noshares: false,
+                    })
+                } else if f.path.is_some() {
+                    Ok(ListFolderRequestBuilder {
+                        folder_id: f.folder_id,
+                        path: f.path,
+                        client: client.clone(),
+                        recursive: false,
+                        showdeleted: false,
+                        nofiles: false,
+                        noshares: false,
+                    })
+                } else {
+                    Err(pcloud_model::PCloudResult::NoFileIdOrPathProvided)
+                }
+            }
+            Err(_) => Err(pcloud_model::PCloudResult::InvalidFileOrFolderName),
+        }
+    }
+
+    /// If is set full directory tree will be returned, which means that all directories will have contents filed.
+    pub fn recursive(mut self, value: bool) -> ListFolderRequestBuilder {
+        self.recursive = value;
+        self
+    }
+
+    ///  If is set, deleted files and folders that can be undeleted will be displayed.
+    pub fn showdeleted(mut self, value: bool) -> ListFolderRequestBuilder {
+        self.showdeleted = value;
+        self
+    }
+
+    ///  If is set, only the folder (sub)structure will be returned.
+    pub fn nofiles(mut self, value: bool) -> ListFolderRequestBuilder {
+        self.nofiles = value;
+        self
+    }
+
+    /// If is set, only user's own folders and files will be displayed.
+    pub fn noshares(mut self, value: bool) -> ListFolderRequestBuilder {
+        self.noshares = value;
+        self
+    }
+
+    pub async fn get(self) -> Result<pcloud_model::FileOrFolderStat, Error> {
+        let mut r = self
+            .client
+            .client
+            .get(format!("{}/listfolder", self.client.api_host));
+
+        if self.path.is_some() {
+            r = r.query(&[("path", self.path.unwrap())]);
+        }
+
+        if self.folder_id.is_some() {
+            r = r.query(&[("folderid", self.folder_id.unwrap())]);
+        }
+
+        if self.recursive {
+            r = r.query(&[("recursive", "1")]);
+        }
+
+        if self.showdeleted {
+            r = r.query(&[("showdeleted", "1")]);
+        }
+
+        if self.nofiles {
+            r = r.query(&[("nofiles", "1")]);
+        }
+
+        if self.noshares {
+            r = r.query(&[("noshares", "1")]);
+        }
+
+        let diff = r
+            .send()
+            .await?
+            .json::<pcloud_model::FileOrFolderStat>()
+            .await?;
+        Ok(diff)
+    }
+}
 
 pub struct DiffRequestBuilder {
     /// Client to actually perform the request
@@ -229,7 +346,7 @@ impl PublicFileDownloadRequestBuilder {
         }
     }
 
-    pub async fn get(self) -> Result<pcloud_model::PublicLinkDownload, Error> {
+    pub async fn get(self) -> Result<pcloud_model::DownloadLink, Error> {
         let mut r = self
             .client
             .client
@@ -241,11 +358,64 @@ impl PublicFileDownloadRequestBuilder {
             r = r.query(&[("fileid", self.fileid.unwrap())]);
         }
 
-        let diff = r
-            .send()
-            .await?
-            .json::<pcloud_model::PublicLinkDownload>()
-            .await?;
+        let diff = r.send().await?.json::<pcloud_model::DownloadLink>().await?;
+        Ok(diff)
+    }
+}
+
+struct FileDownloadRequestBuilder {
+    /// Client to actually perform the request
+    client: PCloudClient,
+    ///  ID of the  file
+    file_id: Option<u64>,
+    /// Path to the  file
+    path: Option<String>,
+}
+
+#[allow(dead_code)]
+impl FileDownloadRequestBuilder {
+    fn for_file<T: TryInto<pcloud_model::PCloudFile>>(
+        client: &PCloudClient,
+        file_like: T,
+    ) -> Result<FileDownloadRequestBuilder, pcloud_model::PCloudResult> {
+        let file = file_like.try_into();
+
+        match file {
+            Ok(f) => {
+                if f.file_id.is_some() {
+                    Ok(FileDownloadRequestBuilder {
+                        file_id: f.file_id,
+                        path: f.path,
+                        client: client.clone(),
+                    })
+                } else if f.path.is_some() {
+                    Ok(FileDownloadRequestBuilder {
+                        file_id: f.file_id,
+                        path: f.path,
+                        client: client.clone(),
+                    })
+                } else {
+                    Err(pcloud_model::PCloudResult::NoFileIdOrPathProvided)
+                }
+            }
+            Err(_) => Err(pcloud_model::PCloudResult::InvalidFileOrFolderName),
+        }
+    }
+
+    pub async fn get(self) -> Result<pcloud_model::DownloadLink, Error> {
+        let mut r = self
+            .client
+            .client
+            .get(format!("{}/getfilelink", self.client.api_host));
+
+        if self.file_id.is_some() {
+            r = r.query(&[("fileid", self.file_id.unwrap())]);
+        }
+        if self.path.is_some() {
+            r = r.query(&[("path", self.path.unwrap())]);
+        }
+
+        let diff = r.send().await?.json::<pcloud_model::DownloadLink>().await?;
         Ok(diff)
     }
 }
@@ -279,12 +449,20 @@ impl PCloudClient {
         DiffRequestBuilder::create(self)
     }
 
+    /// Lists the content of a folder
+    pub fn list_folder<T: TryInto<pcloud_model::PCloudFolder>>(
+        &self,
+        folder_like: T,
+    ) -> Result<ListFolderRequestBuilder, pcloud_model::PCloudResult> {
+        ListFolderRequestBuilder::for_folder(self, folder_like)
+    }
+
     /// Returns the public link for a pCloud file. Accepts either a file id (u64), a file path (String) or any other pCloud object describing a file (like Metadata)
     pub fn get_public_link_for_file<T: TryInto<pcloud_model::PCloudFile>>(
         &self,
-        desc: T,
+        file_like: T,
     ) -> Result<PublicFileLinkRequestBuilder, pcloud_model::PCloudResult> {
-        let file = desc.try_into();
+        let file = file_like.try_into();
 
         match file {
             Ok(f) => {
@@ -306,31 +484,57 @@ impl PCloudClient {
         }
     }
 
-    pub async fn get_public_download(
+    /// Returns the public download link for a public file link
+    pub async fn get_public_download_link_for_file(
         &self,
         link: &pcloud_model::PublicFileLink,
-    ) -> Result<pcloud_model::PublicLinkDownload, Error> {
+    ) -> Result<pcloud_model::DownloadLink, Error> {
         PublicFileDownloadRequestBuilder::for_public_file(self, link.code.clone().unwrap().as_str())
             .get()
             .await
     }
 
-    pub async fn get_public_download_for_file(
+    /// Returns the download link for a file
+    pub async fn get_download_link_for_file<T: TryInto<pcloud_model::PCloudFile>>(
         &self,
-        code: &str,
-    ) -> Result<pcloud_model::PublicLinkDownload, Error> {
-        PublicFileDownloadRequestBuilder::for_public_file(self, code)
+        file_like: T,
+    ) -> Result<pcloud_model::DownloadLink, pcloud_model::PCloudResult> {
+        let result = FileDownloadRequestBuilder::for_file(self, file_like)?
             .get()
-            .await
+            .await;
+
+        match result {
+            Ok(r) => Ok(r),
+            Err(e) => Err(e.into()),
+        }
     }
 
-    pub async fn get_public_download_for_file_in_folder(
+    /// Downloads a DownloadLink
+    pub async fn download_link(
         &self,
-        code: &str,
-        file_id: u64,
-    ) -> Result<pcloud_model::PublicLinkDownload, Error> {
-        PublicFileDownloadRequestBuilder::for_file_in_public_folder(self, code, file_id)
-            .get()
-            .await
+        link: &pcloud_model::DownloadLink,
+    ) -> Result<Response, pcloud_model::PCloudResult> {
+        let url = format!(
+            "https://{}{}",
+            link.hosts.get(0).unwrap(),
+            link.path.as_ref().unwrap()
+        );
+
+        let resp = self.client.get(url).send().await;
+
+        match resp {
+            Ok(r) => Ok(r),
+            Err(e) => Err(e.into()),
+        }
+    }
+
+    /// Fetches the download link and directly downloads the file
+    pub async fn download_file<T: TryInto<pcloud_model::PCloudFile>>(
+        &self,
+        file_like: T,
+    ) -> Result<Response, pcloud_model::PCloudResult> {
+        let link = self.get_download_link_for_file(file_like).await?;
+
+        self.download_link(&link).await
     }
 }
