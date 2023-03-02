@@ -340,6 +340,16 @@ pub struct Metadata {
     pub rotate: Option<u16>,
 }
 
+/// Result of the `getapiserver`request
+#[derive(Serialize, Deserialize, Debug)]
+pub struct ApiServers {
+    pub result: PCloudResult,
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub binapi: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub api: Vec<String>,
+}
+
 /// Result of fetching metadata of files or folders
 /// see https://docs.pcloud.com/methods/file/stat.html
 /// see https://docs.pcloud.com/methods/folder/listfolder.html
@@ -485,6 +495,18 @@ impl TryInto<PCloudFile> for &Metadata {
     }
 }
 
+impl TryInto<PCloudFile> for &FileOrFolderStat {
+    type Error = PCloudResult;
+    fn try_into(self) -> Result<PCloudFile, PCloudResult> {
+        if self.result == PCloudResult::Ok && self.metadata.is_some() {
+            let metadata = &self.metadata.unwrap();
+            metadata.try_into()
+        } else {
+            Err(PCloudResult::InvalidFileOrFolderName)
+        }
+    }
+}
+
 /// Generic description of a PCloud folder. Either by its file id (preferred) or by its path
 pub struct PCloudFolder {
     pub folder_id: Option<u64>,
@@ -529,6 +551,18 @@ impl TryInto<PCloudFolder> for &Metadata {
                 folder_id: self.folderid,
                 path: None,
             })
+        }
+    }
+}
+
+impl TryInto<PCloudFolder> for &FileOrFolderStat {
+    type Error = PCloudResult;
+    fn try_into(self) -> Result<PCloudFolder, PCloudResult> {
+        if self.result == PCloudResult::Ok && self.metadata.is_some() {
+            let metadata = &self.metadata.unwrap();
+            metadata.try_into()
+        } else {
+            Err(PCloudResult::InvalidPath)
         }
     }
 }
