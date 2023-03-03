@@ -1,4 +1,4 @@
-use std::fmt::Display;
+use std::{error::Error, fmt::Display};
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -67,26 +67,6 @@ impl Display for PCloudResult {
     }
 }
 impl std::error::Error for PCloudResult {}
-
-impl Into<PCloudResult> for reqwest::Error {
-    fn into(self) -> PCloudResult {
-        match self.status() {
-            Some(code) => {
-                if code.is_client_error() {
-                    // TODO find better mapping
-                    PCloudResult::ConnectionBroken
-                } else if code.is_server_error() {
-                    PCloudResult::InternalError
-                } else if code.is_success() {
-                    PCloudResult::Ok
-                } else {
-                    PCloudResult::InternalError
-                }
-            }
-            None => PCloudResult::InternalError,
-        }
-    }
-}
 
 /// Result of the `getpublinkdownload` or `getfilelink` calls
 /// see https://docs.pcloud.com/methods/public_links/getpublinkdownload.html
@@ -449,120 +429,6 @@ mod pcloud_option_date_format {
                 }
             }
             Err(_) => Ok(None),
-        }
-    }
-}
-
-/// Generic description of a PCloud File. Either by its file id (preferred) or by its path
-pub struct PCloudFile {
-    pub file_id: Option<u64>,
-    pub path: Option<String>,
-}
-
-/// Convert Strings into pCloud file paths
-impl Into<PCloudFile> for &str {
-    fn into(self) -> PCloudFile {
-        PCloudFile {
-            file_id: None,
-            path: Some(self.to_string()),
-        }
-    }
-}
-
-/// Convert u64 into pCloud file ids
-impl Into<PCloudFile> for u64 {
-    fn into(self) -> PCloudFile {
-        PCloudFile {
-            file_id: Some(self),
-            path: None,
-        }
-    }
-}
-
-/// Extract file id from pCloud file metadata
-impl TryInto<PCloudFile> for &Metadata {
-    type Error = PCloudResult;
-
-    fn try_into(self) -> Result<PCloudFile, PCloudResult> {
-        if self.isfolder {
-            Err(PCloudResult::InvalidFileOrFolderName)
-        } else {
-            Ok(PCloudFile {
-                file_id: self.fileid,
-                path: None,
-            })
-        }
-    }
-}
-
-impl TryInto<PCloudFile> for &FileOrFolderStat {
-    type Error = PCloudResult;
-    fn try_into(self) -> Result<PCloudFile, PCloudResult> {
-        if self.result == PCloudResult::Ok && self.metadata.is_some() {
-            let metadata = &self.metadata.unwrap();
-            metadata.try_into()
-        } else {
-            Err(PCloudResult::InvalidFileOrFolderName)
-        }
-    }
-}
-
-/// Generic description of a PCloud folder. Either by its file id (preferred) or by its path
-pub struct PCloudFolder {
-    pub folder_id: Option<u64>,
-    pub path: Option<String>,
-}
-
-/// Convert Strings into pCloud folder paths
-impl TryInto<PCloudFolder> for &str {
-    type Error = PCloudResult;
-    fn try_into(self) -> Result<PCloudFolder, PCloudResult> {
-        if self.starts_with("/") {
-            // File paths must always be absolute paths
-            Ok(PCloudFolder {
-                folder_id: None,
-                path: Some(self.to_string()),
-            })
-        } else {
-            Err(PCloudResult::InvalidPath)
-        }
-    }
-}
-
-/// Convert u64 into pCloud folder ids
-impl Into<PCloudFolder> for u64 {
-    fn into(self) -> PCloudFolder {
-        PCloudFolder {
-            folder_id: Some(self),
-            path: None,
-        }
-    }
-}
-
-/// Extract file id from pCloud folder metadata
-impl TryInto<PCloudFolder> for &Metadata {
-    type Error = PCloudResult;
-
-    fn try_into(self) -> Result<PCloudFolder, PCloudResult> {
-        if !self.isfolder {
-            Err(PCloudResult::InvalidFileOrFolderName)
-        } else {
-            Ok(PCloudFolder {
-                folder_id: self.folderid,
-                path: None,
-            })
-        }
-    }
-}
-
-impl TryInto<PCloudFolder> for &FileOrFolderStat {
-    type Error = PCloudResult;
-    fn try_into(self) -> Result<PCloudFolder, PCloudResult> {
-        if self.result == PCloudResult::Ok && self.metadata.is_some() {
-            let metadata = &self.metadata.unwrap();
-            metadata.try_into()
-        } else {
-            Err(PCloudResult::InvalidPath)
         }
     }
 }

@@ -1,6 +1,122 @@
-use crate::pcloud_model::{self, Diff, PublicFileLink};
+use crate::pcloud_model::{self, Diff, FileOrFolderStat, Metadata, PCloudResult, PublicFileLink};
 use chrono::{DateTime, Utc};
 use reqwest::{Error, Response};
+
+/// Generic description of a PCloud File. Either by its file id (preferred) or by its path
+pub struct PCloudFile {
+    file_id: Option<u64>,
+    path: Option<String>,
+}
+
+/// Convert Strings into pCloud file paths
+impl Into<PCloudFile> for &str {
+    fn into(self) -> PCloudFile {
+        PCloudFile {
+            file_id: None,
+            path: Some(self.to_string()),
+        }
+    }
+}
+
+/// Convert u64 into pCloud file ids
+impl Into<PCloudFile> for u64 {
+    fn into(self) -> PCloudFile {
+        PCloudFile {
+            file_id: Some(self),
+            path: None,
+        }
+    }
+}
+
+/// Extract file id from pCloud file metadata
+impl TryInto<PCloudFile> for &Metadata {
+    type Error = PCloudResult;
+
+    fn try_into(self) -> Result<PCloudFile, PCloudResult> {
+        if self.isfolder {
+            Err(PCloudResult::InvalidFileOrFolderName)?
+        } else {
+            Ok(PCloudFile {
+                file_id: self.fileid,
+                path: None,
+            })
+        }
+    }
+}
+
+impl TryInto<PCloudFile> for &FileOrFolderStat {
+    type Error = PCloudResult;
+    fn try_into(self) -> Result<PCloudFile, PCloudResult> {
+        if self.result == PCloudResult::Ok && self.metadata.is_some() {
+            let metadata = self.metadata.as_ref().unwrap();
+            metadata.try_into()
+        } else {
+            Err(PCloudResult::InvalidFileOrFolderName)?
+        }
+    }
+}
+
+/// Generic description of a PCloud folder. Either by its file id (preferred) or by its path
+pub struct PCloudFolder {
+    pub folder_id: Option<u64>,
+    pub path: Option<String>,
+}
+
+/// Convert Strings into pCloud folder paths
+impl TryInto<PCloudFolder> for &str {
+    type Error = PCloudResult;
+
+    fn try_into(self) -> Result<PCloudFolder, PCloudResult> {
+        if self.starts_with("/") {
+            // File paths must always be absolute paths
+            Ok(PCloudFolder {
+                folder_id: None,
+                path: Some(self.to_string()),
+            })
+        } else {
+            Err(PCloudResult::InvalidPath)?
+        }
+    }
+}
+
+/// Convert u64 into pCloud folder ids
+impl Into<PCloudFolder> for u64 {
+    fn into(self) -> PCloudFolder {
+        PCloudFolder {
+            folder_id: Some(self),
+            path: None,
+        }
+    }
+}
+
+/// Extract file id from pCloud folder metadata
+impl TryInto<PCloudFolder> for &Metadata {
+    type Error = PCloudResult;
+
+    fn try_into(self) -> Result<PCloudFolder, PCloudResult> {
+        if !self.isfolder {
+            Err(PCloudResult::InvalidFileOrFolderName)?
+        } else {
+            Ok(PCloudFolder {
+                folder_id: self.folderid,
+                path: None,
+            })
+        }
+    }
+}
+
+impl TryInto<PCloudFolder> for &FileOrFolderStat {
+    type Error = PCloudResult;
+
+    fn try_into(self) -> Result<PCloudFolder, PCloudResult> {
+        if self.result == PCloudResult::Ok && self.metadata.is_some() {
+            let metadata = self.metadata.as_ref().unwrap();
+            metadata.try_into()
+        } else {
+            Err(PCloudResult::InvalidPath)?
+        }
+    }
+}
 
 pub struct ListFolderRequestBuilder {
     /// Client to actually perform the request
@@ -21,39 +137,37 @@ pub struct ListFolderRequestBuilder {
 
 #[allow(dead_code)]
 impl ListFolderRequestBuilder {
-    fn for_folder<T: TryInto<pcloud_model::PCloudFolder>>(
+    fn for_folder<'a, T: TryInto<PCloudFolder>>(
         client: &PCloudClient,
         folder_like: T,
-    ) -> Result<ListFolderRequestBuilder, pcloud_model::PCloudResult> {
-        let folder = folder_like.try_into();
+    ) -> Result<ListFolderRequestBuilder, Box<dyn 'a + std::error::Error>>
+    where
+        T::Error: 'a + std::error::Error,
+    {
+        let f = folder_like.try_into()?;
 
-        match folder {
-            Ok(f) => {
-                if f.folder_id.is_some() {
-                    Ok(ListFolderRequestBuilder {
-                        folder_id: f.folder_id,
-                        path: f.path,
-                        client: client.clone(),
-                        recursive: false,
-                        showdeleted: false,
-                        nofiles: false,
-                        noshares: false,
-                    })
-                } else if f.path.is_some() {
-                    Ok(ListFolderRequestBuilder {
-                        folder_id: f.folder_id,
-                        path: f.path,
-                        client: client.clone(),
-                        recursive: false,
-                        showdeleted: false,
-                        nofiles: false,
-                        noshares: false,
-                    })
-                } else {
-                    Err(pcloud_model::PCloudResult::NoFileIdOrPathProvided)
-                }
-            }
-            Err(_) => Err(pcloud_model::PCloudResult::InvalidFileOrFolderName),
+        if f.folder_id.is_some() {
+            Ok(ListFolderRequestBuilder {
+                folder_id: f.folder_id,
+                path: f.path,
+                client: client.clone(),
+                recursive: false,
+                showdeleted: false,
+                nofiles: false,
+                noshares: false,
+            })
+        } else if f.path.is_some() {
+            Ok(ListFolderRequestBuilder {
+                folder_id: f.folder_id,
+                path: f.path,
+                client: client.clone(),
+                recursive: false,
+                showdeleted: false,
+                nofiles: false,
+                noshares: false,
+            })
+        } else {
+            Err(pcloud_model::PCloudResult::NoFileIdOrPathProvided)?
         }
     }
 
@@ -111,12 +225,12 @@ impl ListFolderRequestBuilder {
             r = r.query(&[("noshares", "1")]);
         }
 
-        let diff = r
+        let stat = r
             .send()
             .await?
             .json::<pcloud_model::FileOrFolderStat>()
             .await?;
-        Ok(diff)
+        Ok(stat)
     }
 }
 
@@ -374,31 +488,29 @@ struct FileDownloadRequestBuilder {
 
 #[allow(dead_code)]
 impl FileDownloadRequestBuilder {
-    fn for_file<T: TryInto<pcloud_model::PCloudFile>>(
+    fn for_file<'a, T: TryInto<PCloudFile>>(
         client: &PCloudClient,
         file_like: T,
-    ) -> Result<FileDownloadRequestBuilder, pcloud_model::PCloudResult> {
-        let file = file_like.try_into();
+    ) -> Result<FileDownloadRequestBuilder, Box<dyn 'a + std::error::Error>>
+    where
+        T::Error: 'a + std::error::Error,
+    {
+        let f = file_like.try_into()?;
 
-        match file {
-            Ok(f) => {
-                if f.file_id.is_some() {
-                    Ok(FileDownloadRequestBuilder {
-                        file_id: f.file_id,
-                        path: f.path,
-                        client: client.clone(),
-                    })
-                } else if f.path.is_some() {
-                    Ok(FileDownloadRequestBuilder {
-                        file_id: f.file_id,
-                        path: f.path,
-                        client: client.clone(),
-                    })
-                } else {
-                    Err(pcloud_model::PCloudResult::NoFileIdOrPathProvided)
-                }
-            }
-            Err(_) => Err(pcloud_model::PCloudResult::InvalidFileOrFolderName),
+        if f.file_id.is_some() {
+            Ok(FileDownloadRequestBuilder {
+                file_id: f.file_id,
+                path: f.path,
+                client: client.clone(),
+            })
+        } else if f.path.is_some() {
+            Ok(FileDownloadRequestBuilder {
+                file_id: f.file_id,
+                path: f.path,
+                client: client.clone(),
+            })
+        } else {
+            Err(pcloud_model::PCloudResult::NoFileIdOrPathProvided)?
         }
     }
 
@@ -420,6 +532,65 @@ impl FileDownloadRequestBuilder {
     }
 }
 
+pub struct FileStatRequestBuilder {
+    /// Client to actually perform the request
+    client: PCloudClient,
+    ///  ID of the  file
+    file_id: Option<u64>,
+    /// Path to the  file
+    path: Option<String>,
+}
+
+#[allow(dead_code)]
+impl FileStatRequestBuilder {
+    fn for_file<'a, T: TryInto<PCloudFile>>(
+        client: &PCloudClient,
+        file_like: T,
+    ) -> Result<FileStatRequestBuilder, Box<dyn 'a + std::error::Error>>
+    where
+        T::Error: 'a + std::error::Error,
+    {
+        let f = file_like.try_into()?;
+
+        if f.file_id.is_some() {
+            Ok(FileStatRequestBuilder {
+                file_id: f.file_id,
+                path: f.path,
+                client: client.clone(),
+            })
+        } else if f.path.is_some() {
+            Ok(FileStatRequestBuilder {
+                file_id: f.file_id,
+                path: f.path,
+                client: client.clone(),
+            })
+        } else {
+            Err(pcloud_model::PCloudResult::NoFileIdOrPathProvided)?
+        }
+    }
+
+    pub async fn get(self) -> Result<pcloud_model::FileOrFolderStat, Error> {
+        let mut r = self
+            .client
+            .client
+            .get(format!("{}/stat", self.client.api_host));
+
+        if self.file_id.is_some() {
+            r = r.query(&[("fileid", self.file_id.unwrap())]);
+        }
+        if self.path.is_some() {
+            r = r.query(&[("path", self.path.unwrap())]);
+        }
+
+        let diff = r
+            .send()
+            .await?
+            .json::<pcloud_model::FileOrFolderStat>()
+            .await?;
+        Ok(diff)
+    }
+}
+
 #[derive(Clone)]
 pub struct PCloudClient {
     api_host: String,
@@ -428,7 +599,8 @@ pub struct PCloudClient {
 
 #[allow(dead_code)]
 impl PCloudClient {
-    pub fn with_oauth(host: &str, oauth2: &str) -> PCloudClient {
+    /// Creates a new PCloudClient instance with OAuth 2.0 authentication. Automatically determines nearest API server for best performance
+    pub async fn with_oauth(host: &str, oauth2: &str) -> Result<PCloudClient, Error> {
         let builder = reqwest::ClientBuilder::new();
 
         let mut headers = reqwest::header::HeaderMap::new();
@@ -438,10 +610,24 @@ impl PCloudClient {
         );
 
         let client = builder.default_headers(headers).build().unwrap();
-        PCloudClient {
-            api_host: host.to_string(),
+
+        // Determine fastest api server
+        let api_servers = client
+            .get(format!("{}/getapiserver", host))
+            .send()
+            .await?
+            .json::<pcloud_model::ApiServers>()
+            .await?;
+
+        let best_host = match api_servers.result {
+            pcloud_model::PCloudResult::Ok => api_servers.api.get(0).unwrap(),
+            _ => host,
+        };
+
+        Ok(PCloudClient {
+            api_host: best_host.to_string(),
             client: client,
-        }
+        })
     }
 
     /// List updates of the user's folders/files.
@@ -450,37 +636,49 @@ impl PCloudClient {
     }
 
     /// Lists the content of a folder
-    pub fn list_folder<T: TryInto<pcloud_model::PCloudFolder>>(
+    pub fn list_folder<'a, T: TryInto<PCloudFolder>>(
         &self,
         folder_like: T,
-    ) -> Result<ListFolderRequestBuilder, pcloud_model::PCloudResult> {
+    ) -> Result<ListFolderRequestBuilder, Box<dyn 'a + std::error::Error>>
+    where
+        T::Error: 'a + std::error::Error,
+    {
         ListFolderRequestBuilder::for_folder(self, folder_like)
     }
 
-    /// Returns the public link for a pCloud file. Accepts either a file id (u64), a file path (String) or any other pCloud object describing a file (like Metadata)
-    pub fn get_public_link_for_file<T: TryInto<pcloud_model::PCloudFile>>(
+    /// Returns the metadata of a file
+    pub fn get_file_metadata<'a, T: TryInto<PCloudFile>>(
         &self,
         file_like: T,
-    ) -> Result<PublicFileLinkRequestBuilder, pcloud_model::PCloudResult> {
-        let file = file_like.try_into();
+    ) -> Result<FileStatRequestBuilder, Box<dyn 'a + std::error::Error>>
+    where
+        T::Error: 'a + std::error::Error,
+    {
+        FileStatRequestBuilder::for_file(self, file_like)
+    }
 
-        match file {
-            Ok(f) => {
-                if f.file_id.is_some() {
-                    Ok(PublicFileLinkRequestBuilder::for_file_id(
-                        self,
-                        f.file_id.unwrap(),
-                    ))
-                } else if f.path.is_some() {
-                    Ok(PublicFileLinkRequestBuilder::for_file_path(
-                        self,
-                        f.path.unwrap().as_str(),
-                    ))
-                } else {
-                    Err(pcloud_model::PCloudResult::NoFileIdOrPathProvided)
-                }
-            }
-            Err(_) => Err(pcloud_model::PCloudResult::InvalidFileOrFolderName),
+    /// Returns the public link for a pCloud file. Accepts either a file id (u64), a file path (String) or any other pCloud object describing a file (like Metadata)
+    pub fn get_public_link_for_file<'a, T: TryInto<PCloudFile>>(
+        &self,
+        file_like: T,
+    ) -> Result<PublicFileLinkRequestBuilder, Box<dyn 'a + std::error::Error>>
+    where
+        T::Error: 'a + std::error::Error,
+    {
+        let f = file_like.try_into()?;
+
+        if f.file_id.is_some() {
+            Ok(PublicFileLinkRequestBuilder::for_file_id(
+                self,
+                f.file_id.unwrap(),
+            ))
+        } else if f.path.is_some() {
+            Ok(PublicFileLinkRequestBuilder::for_file_path(
+                self,
+                f.path.unwrap().as_str(),
+            ))
+        } else {
+            Err(pcloud_model::PCloudResult::NoFileIdOrPathProvided)?
         }
     }
 
@@ -488,53 +686,63 @@ impl PCloudClient {
     pub async fn get_public_download_link_for_file(
         &self,
         link: &pcloud_model::PublicFileLink,
-    ) -> Result<pcloud_model::DownloadLink, Error> {
-        PublicFileDownloadRequestBuilder::for_public_file(self, link.code.clone().unwrap().as_str())
-            .get()
-            .await
+    ) -> Result<pcloud_model::DownloadLink, Box<dyn std::error::Error>> {
+        let result = PublicFileDownloadRequestBuilder::for_public_file(
+            self,
+            link.code.clone().unwrap().as_str(),
+        )
+        .get()
+        .await?;
+
+        Ok(result)
     }
 
     /// Returns the download link for a file
-    pub async fn get_download_link_for_file<T: TryInto<pcloud_model::PCloudFile>>(
+    pub async fn get_download_link_for_file<'a, T: TryInto<PCloudFile>>(
         &self,
         file_like: T,
-    ) -> Result<pcloud_model::DownloadLink, pcloud_model::PCloudResult> {
+    ) -> Result<pcloud_model::DownloadLink, Box<dyn 'a + std::error::Error>>
+    where
+        T::Error: 'a + std::error::Error,
+    {
         let result = FileDownloadRequestBuilder::for_file(self, file_like)?
             .get()
-            .await;
+            .await?;
 
-        match result {
-            Ok(r) => Ok(r),
-            Err(e) => Err(e.into()),
-        }
+        Ok(result)
     }
 
     /// Downloads a DownloadLink
     pub async fn download_link(
         &self,
         link: &pcloud_model::DownloadLink,
-    ) -> Result<Response, pcloud_model::PCloudResult> {
-        let url = format!(
-            "https://{}{}",
-            link.hosts.get(0).unwrap(),
-            link.path.as_ref().unwrap()
-        );
+    ) -> Result<Response, Box<dyn std::error::Error>> {
+        if link.hosts.len() > 0 && link.path.is_some() {
+            let url = format!(
+                "https://{}{}",
+                link.hosts.get(0).unwrap(),
+                link.path.as_ref().unwrap()
+            );
 
-        let resp = self.client.get(url).send().await;
+            let resp = self.client.get(url).send().await?;
 
-        match resp {
-            Ok(r) => Ok(r),
-            Err(e) => Err(e.into()),
+            Ok(resp)
+        } else {
+            Err(PCloudResult::ProvideURL)?
         }
     }
 
     /// Fetches the download link and directly downloads the file
-    pub async fn download_file<T: TryInto<pcloud_model::PCloudFile>>(
+    pub async fn download_file<'a, T: TryInto<PCloudFile>>(
         &self,
         file_like: T,
-    ) -> Result<Response, pcloud_model::PCloudResult> {
+    ) -> Result<Response, Box<dyn 'a + std::error::Error>>
+    where
+        T::Error: 'a + std::error::Error,
+    {
         let link = self.get_download_link_for_file(file_like).await?;
+        let file = self.download_link(&link).await?;
 
-        self.download_link(&link).await
+        Ok(file)
     }
 }
