@@ -1,6 +1,6 @@
-use std::{error::Error, fmt::Display};
+use std::fmt::Display;
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, TimeZone, Utc};
 use serde::{Deserialize, Serialize};
 use serde_repr::*;
 
@@ -338,6 +338,17 @@ pub struct FileOrFolderStat {
     pub result: PCloudResult,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub metadata: Option<Metadata>,
+}
+/// Converts a DateTime for pCloud URLs
+pub fn format_date_time_for_pcloud<Tz>(datetime: DateTime<Tz>) -> String
+where
+    Tz: TimeZone,
+    Tz::Offset: Display,
+{
+    let format = "%a, %d %b %Y %H:%M:%S %z";
+    format!("{}", datetime.format(format))
+
+    // format!("{}", datetime.timestamp_millis() / 1000)
 }
 
 /// pCloud Date format for serializing / deserializing

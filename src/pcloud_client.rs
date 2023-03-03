@@ -4,7 +4,9 @@ use reqwest::{Error, Response};
 
 /// Generic description of a PCloud File. Either by its file id (preferred) or by its path
 pub struct PCloudFile {
+    /// ID of the target file
     file_id: Option<u64>,
+    /// Path of the target file
     path: Option<String>,
 }
 
@@ -58,7 +60,9 @@ impl TryInto<PCloudFile> for &FileOrFolderStat {
 
 /// Generic description of a PCloud folder. Either by its file id (preferred) or by its path
 pub struct PCloudFolder {
+    /// ID of the target folder
     pub folder_id: Option<u64>,
+    /// Path of the target folder
     pub path: Option<String>,
 }
 
@@ -292,10 +296,8 @@ impl DiffRequestBuilder {
     }
 
     pub async fn get(self) -> Result<Diff, Error> {
-        let mut r = self
-            .client
-            .client
-            .get(format!("{}/diff", self.client.api_host));
+        let url = format!("{}/diff", self.client.api_host);
+        let mut r = self.client.client.get(url);
 
         if self.diff_id.is_some() {
             r = r.query(&[("diffid", self.diff_id.unwrap())]);
@@ -313,6 +315,12 @@ impl DiffRequestBuilder {
             r = r.query(&[("block", "1")]);
         }
 
+        if self.after.is_some() {
+            r = r.query(&[(
+                "after",
+                pcloud_model::format_date_time_for_pcloud(self.after.unwrap()),
+            )]);
+        }
         let diff = r.send().await?.json::<pcloud_model::Diff>().await?;
         Ok(diff)
     }
@@ -420,6 +428,13 @@ impl PublicFileLinkRequestBuilder {
             r = r.query(&[("shortlink", "1")]);
         }
 
+        if self.expire.is_some() {
+            r = r.query(&[(
+                "expire",
+                pcloud_model::format_date_time_for_pcloud(self.expire.unwrap()),
+            )]);
+        }
+
         let diff = r
             .send()
             .await?
@@ -497,13 +512,7 @@ impl FileDownloadRequestBuilder {
     {
         let f = file_like.try_into()?;
 
-        if f.file_id.is_some() {
-            Ok(FileDownloadRequestBuilder {
-                file_id: f.file_id,
-                path: f.path,
-                client: client.clone(),
-            })
-        } else if f.path.is_some() {
+        if f.file_id.is_some() || f.path.is_some() {
             Ok(FileDownloadRequestBuilder {
                 file_id: f.file_id,
                 path: f.path,
@@ -620,12 +629,14 @@ impl PCloudClient {
             .await?;
 
         let best_host = match api_servers.result {
-            pcloud_model::PCloudResult::Ok => api_servers.api.get(0).unwrap(),
-            _ => host,
+            pcloud_model::PCloudResult::Ok => {
+                format!("https://{}", api_servers.api.get(0).unwrap())
+            }
+            _ => host.to_string(),
         };
 
         Ok(PCloudClient {
-            api_host: best_host.to_string(),
+            api_host: best_host,
             client: client,
         })
     }
