@@ -35,7 +35,7 @@ impl Display for PCloudResult {
             PCloudResult::Ok => write!(f, "Everything ok - no error"),
             PCloudResult::LogInRequired => write!(f, "Log in required"),
             PCloudResult::NoFullPathOrFolderIdProvided => {
-                write!(f, "No full path or folderid provided.")
+                write!(f, "No full path or folder id provided.")
             }
             PCloudResult::NoFileIdOrPathProvided => write!(f, "No file id or file path provided"),
             PCloudResult::DateTimeFormatNotUnderstood => {
@@ -50,7 +50,7 @@ impl Display for PCloudResult {
             }
             PCloudResult::AccessDenied => write!(f, "Access denied"),
             PCloudResult::DirectoryDoesNotExist => write!(f, "Directory does not exist"),
-            PCloudResult::UserOverQuota => write!(f, "User of quota"),
+            PCloudResult::UserOverQuota => write!(f, "User over quota"),
             PCloudResult::FileNotFound => write!(f, "File not found"),
             PCloudResult::InvalidPath => write!(f, "Invalid path"),
             PCloudResult::PleaseVerifyYourMailAddressToPerformThisAction => {
@@ -339,6 +339,7 @@ pub struct FileOrFolderStat {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub metadata: Option<Metadata>,
 }
+
 /// Converts a DateTime for pCloud URLs
 pub fn format_date_time_for_pcloud<Tz>(datetime: DateTime<Tz>) -> String
 where
