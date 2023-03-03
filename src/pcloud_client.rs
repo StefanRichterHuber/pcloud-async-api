@@ -620,7 +620,16 @@ impl PCloudClient {
 
         let client = builder.default_headers(headers).build().unwrap();
 
-        // Determine fastest api server
+        let best_host = PCloudClient::get_best_api_server(&client, host).await?;
+
+        Ok(PCloudClient {
+            api_host: best_host,
+            client: client,
+        })
+    }
+
+    // Determine fastest api server for the given default api server (either api.pcloud.com or eapi.pcloud.com)
+    async fn get_best_api_server(client: &reqwest::Client, host: &str) -> Result<String, Error> {
         let api_servers = client
             .get(format!("{}/getapiserver", host))
             .send()
@@ -635,10 +644,7 @@ impl PCloudClient {
             _ => host.to_string(),
         };
 
-        Ok(PCloudClient {
-            api_host: best_host,
-            client: client,
-        })
+        Ok(best_host)
     }
 
     /// List updates of the user's folders/files.
