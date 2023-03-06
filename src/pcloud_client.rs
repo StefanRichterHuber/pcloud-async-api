@@ -1,7 +1,9 @@
+use std::ops::Deref;
+
 use crate::pcloud_model::{self, Diff, FileOrFolderStat, Metadata, PCloudResult, PublicFileLink};
 use chrono::{DateTime, Utc};
-use reqwest::{Error, Response};
-
+use log::{debug, error, info, log_enabled, warn, Level};
+use reqwest::{Client, Error, RequestBuilder, Response};
 /// Generic description of a PCloud File. Either by its file id (preferred) or by its path
 pub struct PCloudFile {
     /// ID of the target file
@@ -229,6 +231,8 @@ impl ListFolderRequestBuilder {
             r = r.query(&[("noshares", "1")]);
         }
 
+        r = self.client.add_token(r);
+
         let stat = r
             .send()
             .await?
@@ -314,6 +318,8 @@ impl DiffRequestBuilder {
         if self.block {
             r = r.query(&[("block", "1")]);
         }
+
+        r = self.client.add_token(r);
 
         if self.after.is_some() {
             r = r.query(&[(
@@ -435,6 +441,8 @@ impl PublicFileLinkRequestBuilder {
             )]);
         }
 
+        r = self.client.add_token(r);
+
         let diff = r
             .send()
             .await?
@@ -487,6 +495,8 @@ impl PublicFileDownloadRequestBuilder {
             r = r.query(&[("fileid", self.fileid.unwrap())]);
         }
 
+        r = self.client.add_token(r);
+
         let diff = r.send().await?.json::<pcloud_model::DownloadLink>().await?;
         Ok(diff)
     }
@@ -532,9 +542,12 @@ impl FileDownloadRequestBuilder {
         if self.file_id.is_some() {
             r = r.query(&[("fileid", self.file_id.unwrap())]);
         }
+
         if self.path.is_some() {
             r = r.query(&[("path", self.path.unwrap())]);
         }
+
+        r = self.client.add_token(r);
 
         let diff = r.send().await?.json::<pcloud_model::DownloadLink>().await?;
         Ok(diff)
@@ -587,9 +600,12 @@ impl FileStatRequestBuilder {
         if self.file_id.is_some() {
             r = r.query(&[("fileid", self.file_id.unwrap())]);
         }
+
         if self.path.is_some() {
             r = r.query(&[("path", self.path.unwrap())]);
         }
+
+        r = self.client.add_token(r);
 
         let diff = r
             .send()
@@ -604,11 +620,64 @@ impl FileStatRequestBuilder {
 pub struct PCloudClient {
     api_host: String,
     client: reqwest::Client,
+    /// Session auth token (not the OAuth2 token, which is set as default header). Common for all copies of this PCloudClient
+    session_token: std::sync::Arc<Option<PCloudClientSession>>,
+}
+
+/// Contains the client session opened on login (not necessary for oauth2 sessions)
+/// Due to drop implementation, logout automatically happens once the sessions drops
+#[derive(Clone, Debug)]
+struct PCloudClientSession {
+    /// Auth token (not the OAuth2 token, which is set as default header)
+    token: String,
+    /// Host to connect to pCloud API
+    api_host: String,
+    /// Client to connect
+    client: reqwest::Client,
+}
+
+impl PCloudClientSession {
+    /// Adds the session token to the query build
+    fn add_token(&self, r: RequestBuilder) -> RequestBuilder {
+        let token = self.token.clone();
+        let result = r.query(&[("auth", token)]);
+        return result;
+    }
+}
+
+impl Drop for PCloudClientSession {
+    /// Drop the aquired session token
+    fn drop(&mut self) {
+        let client = self.client.clone();
+        let api_host = self.api_host.clone();
+        let token = self.token.clone();
+
+        let op = tokio::spawn(async move {
+            let result = PCloudClient::logout(&client, &api_host, &token).await;
+
+            match result {
+                Ok(v) => {
+                    if v {
+                        debug!("Successful logout");
+                    } else {
+                        warn!("Failed to logout");
+                    }
+                    return v;
+                }
+                Err(_) => {
+                    warn!("Error on logout");
+                    return false;
+                }
+            }
+        });
+        // Wait until the lockout thread finished
+        futures::executor::block_on(op).unwrap();
+    }
 }
 
 #[allow(dead_code)]
 impl PCloudClient {
-    /// Creates a new PCloudClient instance with OAuth 2.0 authentication. Automatically determines nearest API server for best performance
+    /// Creates a new PCloudClient instance with an already present OAuth 2.0 authentication token. Automatically determines nearest API server for best performance
     pub async fn with_oauth(host: &str, oauth2: &str) -> Result<PCloudClient, Error> {
         let builder = reqwest::ClientBuilder::new();
 
@@ -620,22 +689,112 @@ impl PCloudClient {
 
         let client = builder.default_headers(headers).build().unwrap();
 
-        let best_host = PCloudClient::get_best_api_server(&client, host).await?;
+        let best_host = PCloudClient::get_best_api_server(&client, host, None).await?;
 
         Ok(PCloudClient {
             api_host: best_host,
             client: client,
+            session_token: std::sync::Arc::new(None),
         })
     }
 
-    // Determine fastest api server for the given default api server (either api.pcloud.com or eapi.pcloud.com)
-    async fn get_best_api_server(client: &reqwest::Client, host: &str) -> Result<String, Error> {
-        let api_servers = client
-            .get(format!("{}/getapiserver", host))
+    /// Creates a new PCloudClient instance using username and password to obtain a temporary auth token. Token is revoked on drop of this instance.
+    pub async fn with_username_and_password(
+        host: &str,
+        username: &str,
+        password: &str,
+    ) -> Result<PCloudClient, Box<dyn std::error::Error>> {
+        let token = PCloudClient::login(host, username, password).await?;
+
+        let builder = reqwest::ClientBuilder::new();
+
+        let client = builder.build().unwrap();
+
+        let best_host =
+            PCloudClient::get_best_api_server(&client, host, Some(token.clone())).await?;
+
+        let session = PCloudClientSession {
+            api_host: best_host.clone(),
+            client: client.clone(),
+            token: token,
+        };
+
+        Ok(PCloudClient {
+            api_host: best_host,
+            client: client,
+            session_token: std::sync::Arc::new(Some(session)),
+        })
+    }
+
+    /// Performs the login to pCloud using username and password.
+    async fn login(
+        host: &str,
+        username: &str,
+        password: &str,
+    ) -> Result<String, Box<dyn std::error::Error>> {
+        let url = format!("{}/userinfo?getauth=1", host);
+
+        let client = reqwest::ClientBuilder::new().build()?;
+
+        let mut r = client.get(url);
+
+        r = r.query(&[("username", username)]);
+        r = r.query(&[("password", password)]);
+
+        let userinfo = r.send().await?.json::<pcloud_model::UserInfo>().await?;
+
+        if userinfo.result == PCloudResult::Ok && userinfo.auth.is_some() {
+            Ok(userinfo.auth.unwrap())
+        } else {
+            Err(PCloudResult::AccessDenied)?
+        }
+    }
+
+    /// Performs the logout for the token aquired with login
+    async fn logout(
+        client: &Client,
+        api_host: &str,
+        token: &str,
+    ) -> Result<bool, Box<dyn std::error::Error>> {
+        let mut r = client.get(format!("{}/logout", api_host));
+
+        r = r.query(&[("auth", token)]);
+
+        let response = r
             .send()
             .await?
-            .json::<pcloud_model::ApiServers>()
+            .json::<pcloud_model::LogoutResponse>()
             .await?;
+
+        Ok(response.result == PCloudResult::Ok
+            && response.auth_deleted.is_some()
+            && response.auth_deleted.unwrap())
+    }
+
+    /// If theres is a session token present, add it to the given request.
+    fn add_token(&self, r: RequestBuilder) -> RequestBuilder {
+        let arc = self.session_token.clone();
+
+        if let Some(ref session) = *arc {
+            return session.add_token(r);
+        }
+
+        return r;
+    }
+
+    // Determine fastest api server for the given default api server (either api.pcloud.com or eapi.pcloud.com)
+    async fn get_best_api_server(
+        client: &reqwest::Client,
+        host: &str,
+        session_token: Option<String>,
+    ) -> Result<String, Error> {
+        let url = format!("{}/getapiserver", host);
+
+        let mut r = client.get(url);
+
+        r = r.query(&[("auth", session_token)]);
+
+        let api_servers = r.send().await?.json::<pcloud_model::ApiServers>().await?;
 
         let best_host = match api_servers.result {
             pcloud_model::PCloudResult::Ok => {
@@ -652,7 +811,7 @@ impl PCloudClient {
         DiffRequestBuilder::create(self)
     }
 
-    /// Lists the content of a folder
+    /// Lists the content of a folder.  Accepts either a folder id (u64), a folder path (String) or any other pCloud object describing a folder (like Metadata)
     pub fn list_folder<'a, T: TryInto<PCloudFolder>>(
         &self,
         folder_like: T,
@@ -663,7 +822,7 @@ impl PCloudClient {
         ListFolderRequestBuilder::for_folder(self, folder_like)
     }
 
-    /// Returns the metadata of a file
+    /// Returns the metadata of a file.  Accepts either a file id (u64), a file path (String) or any other pCloud object describing a file (like Metadata)
     pub fn get_file_metadata<'a, T: TryInto<PCloudFile>>(
         &self,
         file_like: T,
@@ -714,7 +873,7 @@ impl PCloudClient {
         Ok(result)
     }
 
-    /// Returns the download link for a file
+    /// Returns the download link for a file.  Accepts either a file id (u64), a file path (String) or any other pCloud object describing a file (like Metadata)
     pub async fn get_download_link_for_file<'a, T: TryInto<PCloudFile>>(
         &self,
         file_like: T,
@@ -741,7 +900,11 @@ impl PCloudClient {
                 link.path.as_ref().unwrap()
             );
 
-            let resp = self.client.get(url).send().await?;
+            let mut r = self.client.get(url);
+
+            r = self.add_token(r);
+
+            let resp = r.send().await?;
 
             Ok(resp)
         } else {
@@ -749,7 +912,7 @@ impl PCloudClient {
         }
     }
 
-    /// Fetches the download link and directly downloads the file
+    /// Fetches the download link and directly downloads the file.  Accepts either a file id (u64), a file path (String) or any other pCloud object describing a file (like Metadata)
     pub async fn download_file<'a, T: TryInto<PCloudFile>>(
         &self,
         file_like: T,

@@ -340,6 +340,40 @@ pub struct FileOrFolderStat {
     pub metadata: Option<Metadata>,
 }
 
+/// Result of fetching user metadata
+/// see https://docs.pcloud.com/methods/general/userinfo.html
+#[derive(Serialize, Deserialize, Debug)]
+pub struct UserInfo {
+    pub result: PCloudResult,
+    /// Authentication token
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub auth: Option<String>,
+    pub userid: Option<u64>,
+    ///  email address of the user
+    pub email: Option<String>,
+    /// true if the user had verified it's email
+    pub emailverified: Option<bool>,
+    /// when the user was registered
+    #[serde(with = "pcloud_option_date_format")]
+    pub registered: Option<DateTime<Utc>>,
+    /// 2-3 characters lowercase languageid
+    pub language: Option<String>,
+    ///  true if the user is premium
+    pub premium: Option<bool>,
+    ///  quota in bytes, so quite big numbers
+    pub usedquota: Option<u64>,
+    /// quota in bytes
+    pub quota: Option<u64>,
+}
+
+/// Result of log out
+/// see https://docs.pcloud.com/methods/auth/logout.html
+#[derive(Serialize, Deserialize, Debug)]
+pub struct LogoutResponse {
+    pub result: PCloudResult,
+    pub auth_deleted: Option<bool>,
+}
+
 /// Converts a DateTime for pCloud URLs
 pub fn format_date_time_for_pcloud<Tz>(datetime: DateTime<Tz>) -> String
 where
