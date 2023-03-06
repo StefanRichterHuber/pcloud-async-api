@@ -1,6 +1,6 @@
-use std::ops::Deref;
-
-use crate::pcloud_model::{self, Diff, FileOrFolderStat, Metadata, PCloudResult, PublicFileLink};
+use crate::pcloud_model::{
+    self, Diff, FileOrFolderStat, Metadata, PCloudResult, PublicFileLink, UserInfo,
+};
 use chrono::{DateTime, Utc};
 use log::{debug, error, info, log_enabled, warn, Level};
 use reqwest::{Client, Error, RequestBuilder, Response};
@@ -886,6 +886,18 @@ impl PCloudClient {
             .await?;
 
         Ok(result)
+    }
+
+    /// Get user info
+    pub async fn get_user_info(&self) -> Result<UserInfo, Box<dyn std::error::Error>> {
+        let url = format!("{}/userinfo", self.api_host);
+        let mut r = self.client.get(url);
+
+        r = self.add_token(r);
+
+        let userinfo = r.send().await?.json::<UserInfo>().await?;
+
+        Ok(userinfo)
     }
 
     /// Downloads a DownloadLink

@@ -345,11 +345,12 @@ pub struct FileOrFolderStat {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct UserInfo {
     pub result: PCloudResult,
-    /// Authentication token
+    /// Authentication token (only present if getauth query parameter was set)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub auth: Option<String>,
+    // Unique id of the user
     pub userid: Option<u64>,
-    ///  email address of the user
+    /// email address of the user
     pub email: Option<String>,
     /// true if the user had verified it's email
     pub emailverified: Option<bool>,
