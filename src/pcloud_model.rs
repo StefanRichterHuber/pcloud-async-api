@@ -13,6 +13,7 @@ pub enum PCloudResult {
     NoFullPathOrFolderIdProvided = 1002,
     NoFileIdOrPathProvided = 1004,
     DateTimeFormatNotUnderstood = 1013,
+    ProvidedAtLeastToPathOrToFolderIdOrToName = 1037,
     ProvideURL = 1040,
     LoginFailed = 2000,
     InvalidFileOrFolderName = 2001,
@@ -25,9 +26,12 @@ pub enum PCloudResult {
     FileNotFound = 2009,
     InvalidPath = 2010,
     PleaseVerifyYourMailAddressToPerformThisAction = 2014,
+    CannotPlaceASharedFolderIntoAnotherSharedFolder = 2023,
     YouCanOnlyShareYourOwnFilesOrFolders = 2026,
     ActiveSharesOrShareRequestsForThisFolder = 2028,
     ConnectionBroken = 2041,
+    CannotRenameTheRootFolder = 2042,
+    CannotMoveAFolderToASubfolderOfItself = 2043,
     TooManyLogins = 4000,
     InternalError = 5000,
     InternalUploadError = 5001,
@@ -75,6 +79,18 @@ impl Display for PCloudResult {
             PCloudResult::ActiveSharesOrShareRequestsForThisFolder => write!(
                 f,
                 "There are active shares or sharerequests for this folder."
+            ),
+            PCloudResult::CannotRenameTheRootFolder => write!(f, "Cannot rename the root folder."),
+            PCloudResult::CannotMoveAFolderToASubfolderOfItself => {
+                write!(f, "Cannot move a folder to a subfolder of itself.")
+            }
+            PCloudResult::CannotPlaceASharedFolderIntoAnotherSharedFolder => write!(
+                f,
+                "You are trying to place shared folder into another shared folder."
+            ),
+            PCloudResult::ProvidedAtLeastToPathOrToFolderIdOrToName => write!(
+                f,
+                "Please provide at least one of 'topath', 'tofolderid' or 'toname'."
             ),
         }
     }
