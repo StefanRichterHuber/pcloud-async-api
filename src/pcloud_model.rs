@@ -97,6 +97,40 @@ impl Display for PCloudResult {
 }
 impl std::error::Error for PCloudResult {}
 
+/// Category of the file
+#[derive(Serialize_repr, Deserialize_repr, PartialEq, Debug)]
+#[repr(u8)]
+pub enum FileCategory {
+    Uncategorized = 0,
+    Image = 1,
+    Video = 2,
+    Audio = 3,
+    Document = 4,
+    Archive = 5,
+}
+
+/// Icon of the file / folder
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum FileIcon {
+    Document,
+    Database,
+    Archive,
+    Web,
+    Gis,
+    Spreadsheet,
+    Font,
+    Presentation,
+    Image,
+    Diskimage,
+    Package,
+    Executable,
+    Audio,
+    Video,
+    File,
+    Folder,
+}
+
 /// Result of the `getpublinkdownload` or `getfilelink` calls
 /// see https://docs.pcloud.com/methods/public_links/getpublinkdownload.html
 /// see https://docs.pcloud.com/methods/streaming/getfilelink.html
@@ -238,7 +272,7 @@ pub struct Share {
     pub message: Option<String>,
 }
 
-///  The metadata for a file or folder normally consists of:
+/// The metadata for a file or folder normally consists of:
 /// see https://docs.pcloud.com/structures/metadata.html
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Metadata {
@@ -283,11 +317,11 @@ pub struct Metadata {
     ///  modification date of the object
     #[serde(with = "pcloud_date_format")]
     pub modified: DateTime<Utc>,
-    /// name of the icon to display (one of document, database, archive, web, gis, spreadsheet, font, presentation, image, diskimage, package, executable, audio, video, file)
-    pub icon: String,
-    /// category of the file can be one of 0 - uncategorized, 1 - image, 2 - video,3 - audio, 4 - document, 5 - archive
+    /// name of the icon to display
+    pub icon: Option<FileIcon>,
+    /// category of the file
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub category: Option<u8>,
+    pub category: Option<FileCategory>,
     /// true if thumbs can be created from the object
     pub thumb: bool,
     // size in bytes, present only for files
