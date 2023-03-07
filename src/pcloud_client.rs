@@ -76,7 +76,13 @@ impl TryInto<PCloudFolder> for &str {
     type Error = PCloudResult;
 
     fn try_into(self) -> Result<PCloudFolder, PCloudResult> {
-        if self.starts_with("/") {
+        if self == "/" {
+            // Root folder has always id 0
+            Ok(PCloudFolder {
+                folder_id: Some(0),
+                path: None,
+            })
+        } else if self.starts_with("/") {
             // File paths must always be absolute paths
             Ok(PCloudFolder {
                 folder_id: None,
@@ -124,6 +130,89 @@ impl TryInto<PCloudFolder> for &FileOrFolderStat {
         } else {
             Err(PCloudResult::InvalidPath)?
         }
+    }
+}
+
+pub struct CreateFolderRequestBuilder {
+    /// Client to actually perform the request
+    client: PCloudClient,
+    /// Path of the parent folder
+    path: Option<String>,
+    ///  id of the parent folder
+    folder_id: Option<u64>,
+    /// Name of the folder to create
+    name: String,
+    /// Creates a folder if the folder doesn't exist or returns the existing folder's metadata.
+    if_not_exists: bool,
+}
+
+#[allow(dead_code)]
+impl CreateFolderRequestBuilder {
+    fn for_folder<'a, T: TryInto<PCloudFolder>>(
+        client: &PCloudClient,
+        folder_like_parent: T,
+        name: &str,
+    ) -> Result<CreateFolderRequestBuilder, Box<dyn 'a + std::error::Error>>
+    where
+        T::Error: 'a + std::error::Error,
+    {
+        let f = folder_like_parent.try_into()?;
+
+        if f.folder_id.is_some() {
+            Ok(CreateFolderRequestBuilder {
+                folder_id: f.folder_id,
+                path: f.path,
+                client: client.clone(),
+                name: name.to_string(),
+                if_not_exists: true,
+            })
+        } else if f.path.is_some() {
+            Ok(CreateFolderRequestBuilder {
+                folder_id: f.folder_id,
+                path: f.path,
+                client: client.clone(),
+                name: name.to_string(),
+                if_not_exists: true,
+            })
+        } else {
+            Err(pcloud_model::PCloudResult::NoFileIdOrPathProvided)?
+        }
+    }
+
+    /// If true (default), creates a folder if the folder doesn't exist or returns the existing folder's metadata. If false, creating of the folder fails
+    pub fn if_not_exists(mut self, value: bool) -> CreateFolderRequestBuilder {
+        self.if_not_exists = value;
+        self
+    }
+
+    /// Creates the folder
+    pub async fn execute(self) -> Result<pcloud_model::FileOrFolderStat, Error> {
+        let url = if self.if_not_exists {
+            format!("{}/createfolderifnotexists", self.client.api_host)
+        } else {
+            format!("{}/createfolder", self.client.api_host)
+        };
+
+        let mut r = self.client.client.get(url);
+
+        if self.path.is_some() {
+            r = r.query(&[("path", self.path.unwrap())]);
+        }
+
+        if self.folder_id.is_some() {
+            r = r.query(&[("folderid", self.folder_id.unwrap())]);
+        }
+
+        r = r.query(&[("name", self.name)]);
+
+        r = self.client.add_token(r);
+
+        let stat = r
+            .send()
+            .await?
+            .json::<pcloud_model::FileOrFolderStat>()
+            .await?;
+        Ok(stat)
     }
 }
 
@@ -1088,6 +1177,18 @@ impl PCloudClient {
         T::Error: 'a + std::error::Error,
     {
         UploadRequestBuilder::into_folder(self, folder_like)
+    }
+
+    /// Creates a new folder in a parent folder. Accepts either a folder id (u64), a folder path (String) or any other pCloud object describing a folder (like Metadata)
+    pub fn create_folder<'a, T: TryInto<PCloudFolder>>(
+        &self,
+        parent_folder_like: T,
+        name: &str,
+    ) -> Result<CreateFolderRequestBuilder, Box<dyn 'a + std::error::Error>>
+    where
+        T::Error: 'a + std::error::Error,
+    {
+        CreateFolderRequestBuilder::for_folder(self, parent_folder_like, name)
     }
 
     /// Returns the metadata of a file. Accepts either a file id (u64), a file path (String) or any other pCloud object describing a file (like Metadata)

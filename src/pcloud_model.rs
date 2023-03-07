@@ -9,6 +9,7 @@ use serde_repr::*;
 pub enum PCloudResult {
     Ok = 0,
     LogInRequired = 1000,
+    NoFullPathOrNameOrFolderIdProvided = 1001,
     NoFullPathOrFolderIdProvided = 1002,
     NoFileIdOrPathProvided = 1004,
     DateTimeFormatNotUnderstood = 1013,
@@ -33,6 +34,9 @@ impl Display for PCloudResult {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             PCloudResult::Ok => write!(f, "Everything ok - no error"),
+            PCloudResult::NoFullPathOrNameOrFolderIdProvided => {
+                write!(f, "No full path or name/folderid provided.")
+            }
             PCloudResult::LogInRequired => write!(f, "Log in required"),
             PCloudResult::NoFullPathOrFolderIdProvided => {
                 write!(f, "No full path or folder id provided.")
