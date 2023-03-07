@@ -3,9 +3,10 @@ use std::fmt::Display;
 use crate::pcloud_model::{
     self, Diff, FileOrFolderStat, Metadata, PCloudResult, PublicFileLink, UserInfo,
 };
-use chrono::{DateTime, TimeZone, Utc};
+use chrono::{DateTime, TimeZone};
 use log::{debug, error, info, log_enabled, warn, Level};
 use reqwest::{Body, Client, Error, RequestBuilder, Response};
+
 /// Generic description of a PCloud File. Either by its file id (preferred) or by its path
 pub struct PCloudFile {
     /// ID of the target file
@@ -647,6 +648,62 @@ impl PublicFileDownloadRequestBuilder {
     }
 }
 
+pub struct ChecksumFileRequestBuilder {
+    /// Client to actually perform the request
+    client: PCloudClient,
+    ///  ID of the  file
+    file_id: Option<u64>,
+    /// Path to the  file
+    path: Option<String>,
+}
+
+#[allow(dead_code)]
+impl ChecksumFileRequestBuilder {
+    fn for_file<'a, T: TryInto<PCloudFile>>(
+        client: &PCloudClient,
+        file_like: T,
+    ) -> Result<ChecksumFileRequestBuilder, Box<dyn 'a + std::error::Error>>
+    where
+        T::Error: 'a + std::error::Error,
+    {
+        let f = file_like.try_into()?;
+
+        if f.file_id.is_some() || f.path.is_some() {
+            Ok(ChecksumFileRequestBuilder {
+                file_id: f.file_id,
+                path: f.path,
+                client: client.clone(),
+            })
+        } else {
+            Err(pcloud_model::PCloudResult::NoFileIdOrPathProvided)?
+        }
+    }
+
+    pub async fn get(self) -> Result<pcloud_model::FileChecksums, Error> {
+        let mut r = self
+            .client
+            .client
+            .get(format!("{}/checksumfile", self.client.api_host));
+
+        if self.file_id.is_some() {
+            r = r.query(&[("fileid", self.file_id.unwrap())]);
+        }
+
+        if self.path.is_some() {
+            r = r.query(&[("path", self.path.unwrap())]);
+        }
+
+        r = self.client.add_token(r);
+
+        let diff = r
+            .send()
+            .await?
+            .json::<pcloud_model::FileChecksums>()
+            .await?;
+        Ok(diff)
+    }
+}
+
 pub struct FileDeleteRequestBuilder {
     /// Client to actually perform the request
     client: PCloudClient,
@@ -1053,6 +1110,17 @@ impl PCloudClient {
         T::Error: 'a + std::error::Error,
     {
         FileDeleteRequestBuilder::for_file(self, file_like)
+    }
+
+    /// Requests the checksums of a file. Accepts either a file id (u64), a file path (String) or any other pCloud object describing a file (like Metadata)
+    pub fn checksum_file<'a, T: TryInto<PCloudFile>>(
+        &self,
+        file_like: T,
+    ) -> Result<ChecksumFileRequestBuilder, Box<dyn 'a + std::error::Error>>
+    where
+        T::Error: 'a + std::error::Error,
+    {
+        ChecksumFileRequestBuilder::for_file(self, file_like)
     }
 
     /// Returns the public link for a pCloud file. Accepts either a file id (u64), a file path (String) or any other pCloud object describing a file (like Metadata)

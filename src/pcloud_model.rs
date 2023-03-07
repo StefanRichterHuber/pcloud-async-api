@@ -340,6 +340,23 @@ pub struct FileOrFolderStat {
     pub metadata: Option<Metadata>,
 }
 
+/// Result of calculating file checksums
+/// see https://docs.pcloud.com/methods/file/checksumfile.html
+#[derive(Serialize, Deserialize, Debug)]
+pub struct FileChecksums {
+    pub result: PCloudResult,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<Metadata>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sha1: Option<String>,
+    /// is returned only from US API servers
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub md5: Option<String>,
+    /// is returned in Europe only
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sha256: Option<String>,
+}
+
 /// Result of fetching user metadata
 /// see https://docs.pcloud.com/methods/general/userinfo.html
 #[derive(Serialize, Deserialize, Debug)]
