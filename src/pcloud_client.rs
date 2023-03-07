@@ -2,6 +2,7 @@ use std::fmt::Display;
 
 use crate::pcloud_model::{
     self, Diff, FileOrFolderStat, Metadata, PCloudResult, PublicFileLink, UserInfo,
+    WithPCloudResult,
 };
 use chrono::{DateTime, TimeZone};
 use log::{debug, error, info, log_enabled, warn, Level};
@@ -171,7 +172,9 @@ impl DeleteFolderRequestBuilder {
     }
 
     /// Deletes the folder and all its content recursively
-    pub async fn delete_recursive(self) -> Result<pcloud_model::FolderRecursivlyDeleted, Error> {
+    pub async fn delete_recursive(
+        self,
+    ) -> Result<pcloud_model::FolderRecursivlyDeleted, Box<dyn std::error::Error>> {
         let url = format!("{}/deletefolderrecursive", self.client.api_host);
 
         let mut r = self.client.client.get(url);
@@ -190,12 +193,15 @@ impl DeleteFolderRequestBuilder {
             .send()
             .await?
             .json::<pcloud_model::FolderRecursivlyDeleted>()
-            .await?;
+            .await?
+            .assert_ok()?;
         Ok(stat)
     }
 
     /// Deletes the folder, only if  it is empty
-    pub async fn delete_folder_only(self) -> Result<pcloud_model::FileOrFolderStat, Error> {
+    pub async fn delete_folder_only(
+        self,
+    ) -> Result<pcloud_model::FileOrFolderStat, Box<dyn std::error::Error>> {
         let url = format!("{}/deletefolder", self.client.api_host);
 
         let mut r = self.client.client.get(url);
@@ -214,7 +220,8 @@ impl DeleteFolderRequestBuilder {
             .send()
             .await?
             .json::<pcloud_model::FileOrFolderStat>()
-            .await?;
+            .await?
+            .assert_ok()?;
         Ok(stat)
     }
 }
@@ -272,7 +279,9 @@ impl CreateFolderRequestBuilder {
     }
 
     /// Creates the folder
-    pub async fn execute(self) -> Result<pcloud_model::FileOrFolderStat, Error> {
+    pub async fn execute(
+        self,
+    ) -> Result<pcloud_model::FileOrFolderStat, Box<dyn std::error::Error>> {
         let url = if self.if_not_exists {
             format!("{}/createfolderifnotexists", self.client.api_host)
         } else {
@@ -297,7 +306,8 @@ impl CreateFolderRequestBuilder {
             .send()
             .await?
             .json::<pcloud_model::FileOrFolderStat>()
-            .await?;
+            .await?
+            .assert_ok()?;
         Ok(stat)
     }
 }
@@ -388,7 +398,9 @@ impl CopyFileRequestBuilder {
     }
 
     // Finally uploads the file with the given name and the given content
-    pub async fn execute(self) -> Result<pcloud_model::FileOrFolderStat, Error> {
+    pub async fn execute(
+        self,
+    ) -> Result<pcloud_model::FileOrFolderStat, Box<dyn std::error::Error>> {
         let mut r = self
             .client
             .client
@@ -432,7 +444,8 @@ impl CopyFileRequestBuilder {
             .send()
             .await?
             .json::<pcloud_model::FileOrFolderStat>()
-            .await?;
+            .await?
+            .assert_ok()?;
         Ok(result)
     }
 }
@@ -489,7 +502,9 @@ impl MoveFileRequestBuilder {
     }
 
     // Finally uploads the file with the given name and the given content
-    pub async fn execute(self) -> Result<pcloud_model::FileOrFolderStat, Error> {
+    pub async fn execute(
+        self,
+    ) -> Result<pcloud_model::FileOrFolderStat, Box<dyn std::error::Error>> {
         let mut r = self
             .client
             .client
@@ -521,7 +536,8 @@ impl MoveFileRequestBuilder {
             .send()
             .await?
             .json::<pcloud_model::FileOrFolderStat>()
-            .await?;
+            .await?
+            .assert_ok()?;
         Ok(result)
     }
 }
@@ -623,7 +639,7 @@ impl UploadRequestBuilder {
     }
 
     // Finally uploads the file with the given name and the given content
-    pub async fn upload(self) -> Result<pcloud_model::UploadedFile, Error> {
+    pub async fn upload(self) -> Result<pcloud_model::UploadedFile, Box<dyn std::error::Error>> {
         let mut r = self
             .client
             .client
@@ -662,7 +678,12 @@ impl UploadRequestBuilder {
 
         r = r.multipart(form);
 
-        let result = r.send().await?.json::<pcloud_model::UploadedFile>().await?;
+        let result = r
+            .send()
+            .await?
+            .json::<pcloud_model::UploadedFile>()
+            .await?
+            .assert_ok()?;
         Ok(result)
     }
 }
@@ -744,7 +765,7 @@ impl ListFolderRequestBuilder {
         self
     }
 
-    pub async fn get(self) -> Result<pcloud_model::FileOrFolderStat, Error> {
+    pub async fn get(self) -> Result<pcloud_model::FileOrFolderStat, Box<dyn std::error::Error>> {
         let mut r = self
             .client
             .client
@@ -780,7 +801,8 @@ impl ListFolderRequestBuilder {
             .send()
             .await?
             .json::<pcloud_model::FileOrFolderStat>()
-            .await?;
+            .await?
+            .assert_ok()?;
         Ok(stat)
     }
 }
@@ -845,7 +867,7 @@ impl DiffRequestBuilder {
         self
     }
 
-    pub async fn get(self) -> Result<Diff, Error> {
+    pub async fn get(self) -> Result<Diff, Box<dyn std::error::Error>> {
         let url = format!("{}/diff", self.client.api_host);
         let mut r = self.client.client.get(url);
 
@@ -952,7 +974,7 @@ impl PublicFileLinkRequestBuilder {
         self
     }
 
-    pub async fn get(self) -> Result<PublicFileLink, Error> {
+    pub async fn get(self) -> Result<PublicFileLink, Box<dyn std::error::Error>> {
         let mut r = self
             .client
             .client
@@ -992,7 +1014,8 @@ impl PublicFileLinkRequestBuilder {
             .send()
             .await?
             .json::<pcloud_model::PublicFileLink>()
-            .await?;
+            .await?
+            .assert_ok()?;
         Ok(diff)
     }
 }
@@ -1028,7 +1051,7 @@ impl PublicFileDownloadRequestBuilder {
         }
     }
 
-    pub async fn get(self) -> Result<pcloud_model::DownloadLink, Error> {
+    pub async fn get(self) -> Result<pcloud_model::DownloadLink, Box<dyn std::error::Error>> {
         let mut r = self
             .client
             .client
@@ -1042,7 +1065,12 @@ impl PublicFileDownloadRequestBuilder {
 
         r = self.client.add_token(r);
 
-        let diff = r.send().await?.json::<pcloud_model::DownloadLink>().await?;
+        let diff = r
+            .send()
+            .await?
+            .json::<pcloud_model::DownloadLink>()
+            .await?
+            .assert_ok()?;
         Ok(diff)
     }
 }
@@ -1078,7 +1106,7 @@ impl ChecksumFileRequestBuilder {
         }
     }
 
-    pub async fn get(self) -> Result<pcloud_model::FileChecksums, Error> {
+    pub async fn get(self) -> Result<pcloud_model::FileChecksums, Box<dyn std::error::Error>> {
         let mut r = self
             .client
             .client
@@ -1098,7 +1126,8 @@ impl ChecksumFileRequestBuilder {
             .send()
             .await?
             .json::<pcloud_model::FileChecksums>()
-            .await?;
+            .await?
+            .assert_ok()?;
         Ok(diff)
     }
 }
@@ -1134,7 +1163,9 @@ impl FileDeleteRequestBuilder {
         }
     }
 
-    pub async fn execute(self) -> Result<pcloud_model::FileOrFolderStat, Error> {
+    pub async fn execute(
+        self,
+    ) -> Result<pcloud_model::FileOrFolderStat, Box<dyn std::error::Error>> {
         let mut r = self
             .client
             .client
@@ -1154,7 +1185,8 @@ impl FileDeleteRequestBuilder {
             .send()
             .await?
             .json::<pcloud_model::FileOrFolderStat>()
-            .await?;
+            .await?
+            .assert_ok()?;
         Ok(diff)
     }
 }
@@ -1190,7 +1222,7 @@ impl FileDownloadRequestBuilder {
         }
     }
 
-    pub async fn get(self) -> Result<pcloud_model::DownloadLink, Error> {
+    pub async fn get(self) -> Result<pcloud_model::DownloadLink, Box<dyn std::error::Error>> {
         let mut r = self
             .client
             .client
@@ -1206,7 +1238,12 @@ impl FileDownloadRequestBuilder {
 
         r = self.client.add_token(r);
 
-        let diff = r.send().await?.json::<pcloud_model::DownloadLink>().await?;
+        let diff = r
+            .send()
+            .await?
+            .json::<pcloud_model::DownloadLink>()
+            .await?
+            .assert_ok()?;
         Ok(diff)
     }
 }
@@ -1247,7 +1284,7 @@ impl FileStatRequestBuilder {
         }
     }
 
-    pub async fn get(self) -> Result<pcloud_model::FileOrFolderStat, Error> {
+    pub async fn get(self) -> Result<pcloud_model::FileOrFolderStat, Box<dyn std::error::Error>> {
         let mut r = self
             .client
             .client
@@ -1267,7 +1304,8 @@ impl FileStatRequestBuilder {
             .send()
             .await?
             .json::<pcloud_model::FileOrFolderStat>()
-            .await?;
+            .await?
+            .assert_ok()?;
         Ok(diff)
     }
 }
@@ -1334,7 +1372,10 @@ impl Drop for PCloudClientSession {
 #[allow(dead_code)]
 impl PCloudClient {
     /// Creates a new PCloudClient instance with an already present OAuth 2.0 authentication token. Automatically determines nearest API server for best performance
-    pub async fn with_oauth(host: &str, oauth2: &str) -> Result<PCloudClient, Error> {
+    pub async fn with_oauth(
+        host: &str,
+        oauth2: &str,
+    ) -> Result<PCloudClient, Box<dyn std::error::Error>> {
         let builder = reqwest::ClientBuilder::new();
 
         let mut headers = reqwest::header::HeaderMap::new();
@@ -1443,7 +1484,7 @@ impl PCloudClient {
         client: &reqwest::Client,
         host: &str,
         session_token: Option<String>,
-    ) -> Result<String, Error> {
+    ) -> Result<String, Box<dyn std::error::Error>> {
         let url = format!("{}/getapiserver", host);
 
         let mut r = client.get(url);
@@ -1638,7 +1679,7 @@ impl PCloudClient {
 
         r = self.add_token(r);
 
-        let userinfo = r.send().await?.json::<UserInfo>().await?;
+        let userinfo = r.send().await?.json::<UserInfo>().await?.assert_ok()?;
 
         Ok(userinfo)
     }

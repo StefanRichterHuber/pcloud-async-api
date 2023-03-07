@@ -134,7 +134,7 @@ pub enum FileIcon {
 /// Implemented by all structs having a PCloud Result
 pub trait WithPCloudResult {
     /// Returns the result
-    fn get_result(&self) -> PCloudResult;
+    fn get_result(&self) -> &PCloudResult;
 
     /// Checks if the operation was 'Ok', if not Error is returned
     fn assert_ok(self) -> Result<Self, PCloudResult>
@@ -143,7 +143,7 @@ pub trait WithPCloudResult {
     {
         match self.get_result() {
             PCloudResult::Ok => Ok(self),
-            x => Err(x),
+            x => Err(x.clone()),
         }
     }
 }
@@ -164,8 +164,8 @@ pub struct DownloadLink {
 }
 
 impl WithPCloudResult for DownloadLink {
-    fn get_result(&self) -> PCloudResult {
-        self.result.clone()
+    fn get_result(&self) -> &PCloudResult {
+        &self.result
     }
 }
 
@@ -198,8 +198,8 @@ pub struct PublicFileLink {
 }
 
 impl WithPCloudResult for PublicFileLink {
-    fn get_result(&self) -> PCloudResult {
-        self.result.clone()
+    fn get_result(&self) -> &PCloudResult {
+        &self.result
     }
 }
 
@@ -432,8 +432,8 @@ pub struct ApiServers {
 }
 
 impl WithPCloudResult for ApiServers {
-    fn get_result(&self) -> PCloudResult {
-        self.result.clone()
+    fn get_result(&self) -> &PCloudResult {
+        &self.result
     }
 }
 
@@ -450,8 +450,8 @@ pub struct FileOrFolderStat {
 }
 
 impl WithPCloudResult for FileOrFolderStat {
-    fn get_result(&self) -> PCloudResult {
-        self.result.clone()
+    fn get_result(&self) -> &PCloudResult {
+        &self.result
     }
 }
 /// Result of the deletefolderrecursive operation
@@ -469,8 +469,8 @@ pub struct FolderRecursivlyDeleted {
 }
 
 impl WithPCloudResult for FolderRecursivlyDeleted {
-    fn get_result(&self) -> PCloudResult {
-        self.result.clone()
+    fn get_result(&self) -> &PCloudResult {
+        &self.result
     }
 }
 
@@ -495,8 +495,8 @@ pub struct FileChecksums {
 }
 
 impl WithPCloudResult for FileChecksums {
-    fn get_result(&self) -> PCloudResult {
-        self.result.clone()
+    fn get_result(&self) -> &PCloudResult {
+        &self.result
     }
 }
 
@@ -529,8 +529,8 @@ pub struct UserInfo {
 }
 
 impl WithPCloudResult for UserInfo {
-    fn get_result(&self) -> PCloudResult {
-        self.result.clone()
+    fn get_result(&self) -> &PCloudResult {
+        &self.result
     }
 }
 
@@ -547,8 +547,8 @@ pub struct UploadedFile {
 }
 
 impl WithPCloudResult for UploadedFile {
-    fn get_result(&self) -> PCloudResult {
-        self.result.clone()
+    fn get_result(&self) -> &PCloudResult {
+        &self.result
     }
 }
 
@@ -563,8 +563,8 @@ pub struct LogoutResponse {
 }
 
 impl WithPCloudResult for LogoutResponse {
-    fn get_result(&self) -> PCloudResult {
-        self.result.clone()
+    fn get_result(&self) -> &PCloudResult {
+        &self.result
     }
 }
 
