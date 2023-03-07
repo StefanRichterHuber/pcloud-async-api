@@ -367,6 +367,17 @@ pub struct UserInfo {
     pub quota: Option<u64>,
 }
 
+/// Result of a file upload operation
+/// see https://docs.pcloud.com/methods/file/uploadfile.html
+#[derive(Serialize, Deserialize, Debug)]
+pub struct UploadedFile {
+    pub result: PCloudResult,
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub fileids: Vec<u64>,
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub metadata: Vec<Metadata>,
+}
+
 /// Result of log out
 /// see https://docs.pcloud.com/methods/auth/logout.html
 #[derive(Serialize, Deserialize, Debug)]
@@ -376,7 +387,7 @@ pub struct LogoutResponse {
 }
 
 /// Converts a DateTime for pCloud URLs
-pub fn format_date_time_for_pcloud<Tz>(datetime: DateTime<Tz>) -> String
+pub fn format_date_time_for_pcloud<Tz>(datetime: &DateTime<Tz>) -> String
 where
     Tz: TimeZone,
     Tz::Offset: Display,

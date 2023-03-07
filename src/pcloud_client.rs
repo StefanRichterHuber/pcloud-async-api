@@ -1,9 +1,11 @@
+use std::fmt::Display;
+
 use crate::pcloud_model::{
     self, Diff, FileOrFolderStat, Metadata, PCloudResult, PublicFileLink, UserInfo,
 };
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, TimeZone, Utc};
 use log::{debug, error, info, log_enabled, warn, Level};
-use reqwest::{Client, Error, RequestBuilder, Response};
+use reqwest::{Body, Client, Error, RequestBuilder, Response};
 /// Generic description of a PCloud File. Either by its file id (preferred) or by its path
 pub struct PCloudFile {
     /// ID of the target file
@@ -124,10 +126,151 @@ impl TryInto<PCloudFolder> for &FileOrFolderStat {
     }
 }
 
+pub struct UploadRequestBuilder {
+    /// Client to actually perform the request
+    client: PCloudClient,
+    /// Path of the target folder
+    path: Option<String>,
+    ///  id of the target folder
+    folder_id: Option<u64>,
+    /// If is set, partially uploaded files will not be saved
+    no_partial: bool,
+    /// if set, the uploaded file will be renamed, if file with the requested name exists in the folder.
+    rename_if_exists: bool,
+    /// if set, file modified time is set. Have to be unix time seconds.
+    mtime: Option<i64>,
+    /// if set, file created time is set. It's required to provide mtime to set ctime. Have to be unix time seconds.
+    ctime: Option<i64>,
+    /// files to upload
+    files: Vec<reqwest::multipart::Part>,
+}
+
+#[allow(dead_code)]
+impl UploadRequestBuilder {
+    fn into_folder<'a, T: TryInto<PCloudFolder>>(
+        client: &PCloudClient,
+        folder_like: T,
+    ) -> Result<UploadRequestBuilder, Box<dyn 'a + std::error::Error>>
+    where
+        T::Error: 'a + std::error::Error,
+    {
+        let f = folder_like.try_into()?;
+
+        if f.folder_id.is_some() {
+            Ok(UploadRequestBuilder {
+                folder_id: f.folder_id,
+                path: f.path,
+                client: client.clone(),
+                no_partial: true,
+                rename_if_exists: false,
+                mtime: None,
+                ctime: None,
+                files: Vec::new(),
+            })
+        } else if f.path.is_some() {
+            Ok(UploadRequestBuilder {
+                folder_id: f.folder_id,
+                path: f.path,
+                client: client.clone(),
+                no_partial: true,
+                rename_if_exists: false,
+                mtime: None,
+                ctime: None,
+                files: Vec::new(),
+            })
+        } else {
+            Err(pcloud_model::PCloudResult::NoFileIdOrPathProvided)?
+        }
+    }
+
+    ///  If is set, partially uploaded files will not be saved (defaults to true)
+    pub fn no_partial(mut self, value: bool) -> UploadRequestBuilder {
+        self.no_partial = value;
+        self
+    }
+
+    ///  if set, the uploaded file will be renamed, if file with the requested name exists in the folder.
+    pub fn rename_if_exists(mut self, value: bool) -> UploadRequestBuilder {
+        self.rename_if_exists = value;
+        self
+    }
+
+    /// if set, file modified time is set. Have to be unix time seconds.
+    pub fn mtime<Tz>(mut self, value: &DateTime<Tz>) -> UploadRequestBuilder
+    where
+        Tz: TimeZone,
+        Tz::Offset: Display,
+    {
+        self.mtime = Some(value.timestamp());
+        self
+    }
+
+    ///  if set, file created time is set. It's required to provide mtime to set ctime. Have to be unix time seconds.
+    pub fn ctime<Tz>(mut self, value: &DateTime<Tz>) -> UploadRequestBuilder
+    where
+        Tz: TimeZone,
+        Tz::Offset: Display,
+    {
+        self.ctime = Some(value.timestamp());
+        self
+    }
+
+    /// Adds a file to the upload request
+    pub fn with_file<T: Into<Body>>(mut self, file_name: &str, body: T) -> UploadRequestBuilder {
+        let file_part = reqwest::multipart::Part::stream(body).file_name(file_name.to_string());
+        self.files.push(file_part);
+        self
+    }
+
+    // Finally uploads the file with the given name and the given content
+    pub async fn upload(self) -> Result<pcloud_model::UploadedFile, Error> {
+        let mut r = self
+            .client
+            .client
+            .post(format!("{}/uploadfile", self.client.api_host));
+
+        if self.path.is_some() {
+            r = r.query(&[("path", self.path.unwrap())]);
+        }
+
+        if self.folder_id.is_some() {
+            r = r.query(&[("folderid", self.folder_id.unwrap())]);
+        }
+
+        if self.no_partial {
+            r = r.query(&[("nopartial", "1")]);
+        }
+
+        if self.rename_if_exists {
+            r = r.query(&[("renameifexists", "1")]);
+        }
+
+        if self.mtime.is_some() {
+            r = r.query(&[("mtime", self.mtime.unwrap())]);
+        }
+
+        if self.ctime.is_some() {
+            r = r.query(&[("ctime", self.ctime.unwrap())]);
+        }
+
+        r = self.client.add_token(r);
+
+        let mut form = reqwest::multipart::Form::new();
+        for part in self.files {
+            form = form.part("part", part);
+        }
+
+        r = r.multipart(form);
+
+        let result = r.send().await?.json::<pcloud_model::UploadedFile>().await?;
+        Ok(result)
+    }
+}
+
 pub struct ListFolderRequestBuilder {
     /// Client to actually perform the request
     client: PCloudClient,
-    ///
+    /// Path of the folder
     path: Option<String>,
     ///  id of the folder
     folder_id: Option<u64>,
@@ -248,7 +391,7 @@ pub struct DiffRequestBuilder {
     /// receive only changes since that diffid.
     diff_id: Option<u64>,
     /// datetime receive only events generated after that time
-    after: Option<DateTime<Utc>>,
+    after: Option<String>,
     /// return last number of events with highest diffids (that is the last events)
     last: Option<u64>,
     /// if set, the connection will block until an event arrives. Works only with diffid
@@ -275,10 +418,13 @@ impl DiffRequestBuilder {
         self.diff_id = Some(value);
         self
     }
-
     /// datetime receive only events generated after that time
-    pub fn after(mut self, value: DateTime<Utc>) -> DiffRequestBuilder {
-        self.after = Some(value);
+    pub fn after<Tz>(mut self, value: &DateTime<Tz>) -> DiffRequestBuilder
+    where
+        Tz: TimeZone,
+        Tz::Offset: Display,
+    {
+        self.after = Some(pcloud_model::format_date_time_for_pcloud(value));
         self
     }
 
@@ -322,10 +468,7 @@ impl DiffRequestBuilder {
         r = self.client.add_token(r);
 
         if self.after.is_some() {
-            r = r.query(&[(
-                "after",
-                pcloud_model::format_date_time_for_pcloud(self.after.unwrap()),
-            )]);
+            r = r.query(&[("after", self.after.unwrap())]);
         }
         let diff = r.send().await?.json::<pcloud_model::Diff>().await?;
         Ok(diff)
@@ -340,7 +483,7 @@ pub struct PublicFileLinkRequestBuilder {
     /// path to the file for public link
     path: Option<String>,
     /// Datetime when the link will stop working
-    expire: Option<DateTime<Utc>>,
+    expire: Option<String>,
     maxdownloads: Option<u64>,
     maxtraffic: Option<u64>,
     shortlink: bool,
@@ -374,9 +517,14 @@ impl PublicFileLinkRequestBuilder {
             client: client.clone(),
         }
     }
+
     //  Datetime when the link will stop working
-    pub fn expire_link_after(mut self, value: DateTime<Utc>) -> PublicFileLinkRequestBuilder {
-        self.expire = Some(value);
+    pub fn expire_link_after<Tz>(mut self, value: &DateTime<Tz>) -> PublicFileLinkRequestBuilder
+    where
+        Tz: TimeZone,
+        Tz::Offset: Display,
+    {
+        self.expire = Some(pcloud_model::format_date_time_for_pcloud(value));
         self
     }
 
@@ -435,10 +583,7 @@ impl PublicFileLinkRequestBuilder {
         }
 
         if self.expire.is_some() {
-            r = r.query(&[(
-                "expire",
-                pcloud_model::format_date_time_for_pcloud(self.expire.unwrap()),
-            )]);
+            r = r.query(&[("expire", self.expire.unwrap())]);
         }
 
         r = self.client.add_token(r);
@@ -553,7 +698,6 @@ impl FileDownloadRequestBuilder {
         Ok(diff)
     }
 }
-
 pub struct FileStatRequestBuilder {
     /// Client to actually perform the request
     client: PCloudClient,
@@ -811,7 +955,7 @@ impl PCloudClient {
         DiffRequestBuilder::create(self)
     }
 
-    /// Lists the content of a folder.  Accepts either a folder id (u64), a folder path (String) or any other pCloud object describing a folder (like Metadata)
+    /// Lists the content of a folder. Accepts either a folder id (u64), a folder path (String) or any other pCloud object describing a folder (like Metadata)
     pub fn list_folder<'a, T: TryInto<PCloudFolder>>(
         &self,
         folder_like: T,
@@ -820,6 +964,17 @@ impl PCloudClient {
         T::Error: 'a + std::error::Error,
     {
         ListFolderRequestBuilder::for_folder(self, folder_like)
+    }
+
+    /// Uploads files into a folder. Accepts either a folder id (u64), a folder path (String) or any other pCloud object describing a folder (like Metadata)
+    pub fn upload_file_into_folder<'a, T: TryInto<PCloudFolder>>(
+        &self,
+        folder_like: T,
+    ) -> Result<UploadRequestBuilder, Box<dyn 'a + std::error::Error>>
+    where
+        T::Error: 'a + std::error::Error,
+    {
+        UploadRequestBuilder::into_folder(self, folder_like)
     }
 
     /// Returns the metadata of a file.  Accepts either a file id (u64), a file path (String) or any other pCloud object describing a file (like Metadata)
