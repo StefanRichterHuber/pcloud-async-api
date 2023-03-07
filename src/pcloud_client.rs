@@ -647,6 +647,62 @@ impl PublicFileDownloadRequestBuilder {
     }
 }
 
+pub struct FileDeleteRequestBuilder {
+    /// Client to actually perform the request
+    client: PCloudClient,
+    ///  ID of the  file
+    file_id: Option<u64>,
+    /// Path to the  file
+    path: Option<String>,
+}
+
+#[allow(dead_code)]
+impl FileDeleteRequestBuilder {
+    fn for_file<'a, T: TryInto<PCloudFile>>(
+        client: &PCloudClient,
+        file_like: T,
+    ) -> Result<FileDeleteRequestBuilder, Box<dyn 'a + std::error::Error>>
+    where
+        T::Error: 'a + std::error::Error,
+    {
+        let f = file_like.try_into()?;
+
+        if f.file_id.is_some() || f.path.is_some() {
+            Ok(FileDeleteRequestBuilder {
+                file_id: f.file_id,
+                path: f.path,
+                client: client.clone(),
+            })
+        } else {
+            Err(pcloud_model::PCloudResult::NoFileIdOrPathProvided)?
+        }
+    }
+
+    pub async fn execute(self) -> Result<pcloud_model::FileOrFolderStat, Error> {
+        let mut r = self
+            .client
+            .client
+            .get(format!("{}/deletefile", self.client.api_host));
+
+        if self.file_id.is_some() {
+            r = r.query(&[("fileid", self.file_id.unwrap())]);
+        }
+
+        if self.path.is_some() {
+            r = r.query(&[("path", self.path.unwrap())]);
+        }
+
+        r = self.client.add_token(r);
+
+        let diff = r
+            .send()
+            .await?
+            .json::<pcloud_model::FileOrFolderStat>()
+            .await?;
+        Ok(diff)
+    }
+}
+
 struct FileDownloadRequestBuilder {
     /// Client to actually perform the request
     client: PCloudClient,
@@ -977,7 +1033,7 @@ impl PCloudClient {
         UploadRequestBuilder::into_folder(self, folder_like)
     }
 
-    /// Returns the metadata of a file.  Accepts either a file id (u64), a file path (String) or any other pCloud object describing a file (like Metadata)
+    /// Returns the metadata of a file. Accepts either a file id (u64), a file path (String) or any other pCloud object describing a file (like Metadata)
     pub fn get_file_metadata<'a, T: TryInto<PCloudFile>>(
         &self,
         file_like: T,
@@ -986,6 +1042,17 @@ impl PCloudClient {
         T::Error: 'a + std::error::Error,
     {
         FileStatRequestBuilder::for_file(self, file_like)
+    }
+
+    /// Requests deleting a file. Accepts either a file id (u64), a file path (String) or any other pCloud object describing a file (like Metadata)
+    pub fn delete_file<'a, T: TryInto<PCloudFile>>(
+        &self,
+        file_like: T,
+    ) -> Result<FileDeleteRequestBuilder, Box<dyn 'a + std::error::Error>>
+    where
+        T::Error: 'a + std::error::Error,
+    {
+        FileDeleteRequestBuilder::for_file(self, file_like)
     }
 
     /// Returns the public link for a pCloud file. Accepts either a file id (u64), a file path (String) or any other pCloud object describing a file (like Metadata)
