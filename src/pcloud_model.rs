@@ -128,6 +128,7 @@ pub struct PublicFileLink {
 /// see https://docs.pcloud.com/methods/general/diff.html
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Diff {
+    /// Last diff id listed
     pub diffid: u64,
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub entries: Vec<DiffEntry>,
@@ -136,12 +137,17 @@ pub struct Diff {
 /// On success in the reply there will be entries array of objects and diffid. Set your current diffid to the provided diffid after you process all events, during processing set your state to the diffid of the event preferably in a single transaction with the event itself.
 #[derive(Serialize, Deserialize, Debug)]
 pub struct DiffEntry {
+    /// Timestamp of the vent
     #[serde(with = "pcloud_date_format")]
     pub time: DateTime<Utc>,
+    /// ID of the event
     pub diffid: u64,
+    /// Type of the event
     pub event: DiffEvent,
+    /// File metadata of file / folder targeted by the event
     #[serde(skip_serializing_if = "Option::is_none")]
     pub metadata: Option<Metadata>,
+    /// Share metdata of the file / folder targeted by the event
     #[serde(skip_serializing_if = "Option::is_none")]
     pub share: Option<Share>,
 }
@@ -336,9 +342,12 @@ pub struct Metadata {
 /// Result of the `getapiserver`request
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ApiServers {
+    /// Result of the operation, must be Ok for further values to be present
     pub result: PCloudResult,
+    /// API endpoints for the binary API (first entry is the best choice)
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub binapi: Vec<String>,
+    /// API endpoints for the rest API (first entry is the best choice)
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub api: Vec<String>,
 }
@@ -348,7 +357,9 @@ pub struct ApiServers {
 /// see https://docs.pcloud.com/methods/folder/listfolder.html
 #[derive(Serialize, Deserialize, Debug)]
 pub struct FileOrFolderStat {
+    /// Result of the operation, must be Ok for further values to be present
     pub result: PCloudResult,
+    /// Metadata of the targeted file
     #[serde(skip_serializing_if = "Option::is_none")]
     pub metadata: Option<Metadata>,
 }
@@ -357,6 +368,7 @@ pub struct FileOrFolderStat {
 /// see https://docs.pcloud.com/methods/folder/deletefolderrecursive.html
 #[derive(Serialize, Deserialize, Debug)]
 pub struct FolderRecursivlyDeleted {
+    /// Result of the operation, must be Ok for further values to be present
     pub result: PCloudResult,
     /// the number of deleted files
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -370,15 +382,18 @@ pub struct FolderRecursivlyDeleted {
 /// see https://docs.pcloud.com/methods/file/checksumfile.html
 #[derive(Serialize, Deserialize, Debug)]
 pub struct FileChecksums {
+    /// Result of the operation, must be Ok for further values to be present
     pub result: PCloudResult,
+    /// Metdata of the target file
     #[serde(skip_serializing_if = "Option::is_none")]
     pub metadata: Option<Metadata>,
+    // SHA-1 checksum. Always present
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sha1: Option<String>,
-    /// is returned only from US API servers
+    /// MD5 checksum, is returned only from US API servers
     #[serde(skip_serializing_if = "Option::is_none")]
     pub md5: Option<String>,
-    /// is returned in Europe only
+    /// SHA-256 checksum is returned in Europe only
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sha256: Option<String>,
 }
@@ -387,6 +402,7 @@ pub struct FileChecksums {
 /// see https://docs.pcloud.com/methods/general/userinfo.html
 #[derive(Serialize, Deserialize, Debug)]
 pub struct UserInfo {
+    /// Result of the operation, must be Ok for further values to be present
     pub result: PCloudResult,
     /// Authentication token (only present if getauth query parameter was set)
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -414,6 +430,7 @@ pub struct UserInfo {
 /// see https://docs.pcloud.com/methods/file/uploadfile.html
 #[derive(Serialize, Deserialize, Debug)]
 pub struct UploadedFile {
+    /// Result of the operation, must be Ok for further values to be present
     pub result: PCloudResult,
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub fileids: Vec<u64>,
@@ -425,7 +442,9 @@ pub struct UploadedFile {
 /// see https://docs.pcloud.com/methods/auth/logout.html
 #[derive(Serialize, Deserialize, Debug)]
 pub struct LogoutResponse {
+    /// Result of the operation, must be Ok for further values to be present
     pub result: PCloudResult,
+    /// Authentication token successfully deleted?
     pub auth_deleted: Option<bool>,
 }
 
