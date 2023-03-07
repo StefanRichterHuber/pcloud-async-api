@@ -19,11 +19,14 @@ pub enum PCloudResult {
     ComponentOfTheParentDirectoryDoesNotExist = 2002,
     AccessDenied = 2003,
     DirectoryDoesNotExist = 2005,
+    FolderIsNotEmpty = 2006,
+    CanNotDeleteRootFolder = 2007,
     UserOverQuota = 2008,
     FileNotFound = 2009,
     InvalidPath = 2010,
     PleaseVerifyYourMailAddressToPerformThisAction = 2014,
     YouCanOnlyShareYourOwnFilesOrFolders = 2026,
+    ActiveSharesOrShareRequestsForThisFolder = 2028,
     ConnectionBroken = 2041,
     TooManyLogins = 4000,
     InternalError = 5000,
@@ -67,6 +70,12 @@ impl Display for PCloudResult {
             PCloudResult::TooManyLogins => write!(f, "Too many logins"),
             PCloudResult::InternalError => write!(f, "Internal error"),
             PCloudResult::InternalUploadError => write!(f, "Internal upload error"),
+            PCloudResult::FolderIsNotEmpty => write!(f, "Folder is not empty"),
+            PCloudResult::CanNotDeleteRootFolder => write!(f, "Cannot delete the root folder."),
+            PCloudResult::ActiveSharesOrShareRequestsForThisFolder => write!(
+                f,
+                "There are active shares or sharerequests for this folder."
+            ),
         }
     }
 }
@@ -342,6 +351,19 @@ pub struct FileOrFolderStat {
     pub result: PCloudResult,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub metadata: Option<Metadata>,
+}
+
+/// Result of the deletefolderrecursive operation
+/// see https://docs.pcloud.com/methods/folder/deletefolderrecursive.html
+#[derive(Serialize, Deserialize, Debug)]
+pub struct FolderRecursivlyDeleted {
+    pub result: PCloudResult,
+    /// the number of deleted files
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub deletedfiles: Option<u64>,
+    /// number of deleted folders
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub deletedfolders: Option<u64>,
 }
 
 /// Result of calculating file checksums

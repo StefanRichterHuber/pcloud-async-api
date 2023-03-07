@@ -133,6 +133,92 @@ impl TryInto<PCloudFolder> for &FileOrFolderStat {
     }
 }
 
+pub struct DeleteFolderRequestBuilder {
+    /// Client to actually perform the request
+    client: PCloudClient,
+    /// Path of the folder
+    path: Option<String>,
+    ///  id of the folder
+    folder_id: Option<u64>,
+}
+
+#[allow(dead_code)]
+impl DeleteFolderRequestBuilder {
+    fn for_folder<'a, T: TryInto<PCloudFolder>>(
+        client: &PCloudClient,
+        folder_like: T,
+    ) -> Result<DeleteFolderRequestBuilder, Box<dyn 'a + std::error::Error>>
+    where
+        T::Error: 'a + std::error::Error,
+    {
+        let f = folder_like.try_into()?;
+
+        if f.folder_id.is_some() {
+            Ok(DeleteFolderRequestBuilder {
+                folder_id: f.folder_id,
+                path: f.path,
+                client: client.clone(),
+            })
+        } else if f.path.is_some() {
+            Ok(DeleteFolderRequestBuilder {
+                folder_id: f.folder_id,
+                path: f.path,
+                client: client.clone(),
+            })
+        } else {
+            Err(pcloud_model::PCloudResult::NoFileIdOrPathProvided)?
+        }
+    }
+
+    /// Deletes the folder and all its content recursively
+    pub async fn delete_recursive(self) -> Result<pcloud_model::FolderRecursivlyDeleted, Error> {
+        let url = format!("{}/deletefolderrecursive", self.client.api_host);
+
+        let mut r = self.client.client.get(url);
+
+        if self.path.is_some() {
+            r = r.query(&[("path", self.path.unwrap())]);
+        }
+
+        if self.folder_id.is_some() {
+            r = r.query(&[("folderid", self.folder_id.unwrap())]);
+        }
+
+        r = self.client.add_token(r);
+
+        let stat = r
+            .send()
+            .await?
+            .json::<pcloud_model::FolderRecursivlyDeleted>()
+            .await?;
+        Ok(stat)
+    }
+
+    /// Deletes the folder, only if  it is empty
+    pub async fn delete_folder_only(self) -> Result<pcloud_model::FileOrFolderStat, Error> {
+        let url = format!("{}/deletefolder", self.client.api_host);
+
+        let mut r = self.client.client.get(url);
+
+        if self.path.is_some() {
+            r = r.query(&[("path", self.path.unwrap())]);
+        }
+
+        if self.folder_id.is_some() {
+            r = r.query(&[("folderid", self.folder_id.unwrap())]);
+        }
+
+        r = self.client.add_token(r);
+
+        let stat = r
+            .send()
+            .await?
+            .json::<pcloud_model::FileOrFolderStat>()
+            .await?;
+        Ok(stat)
+    }
+}
+
 pub struct CreateFolderRequestBuilder {
     /// Client to actually perform the request
     client: PCloudClient,
@@ -1189,6 +1275,17 @@ impl PCloudClient {
         T::Error: 'a + std::error::Error,
     {
         CreateFolderRequestBuilder::for_folder(self, parent_folder_like, name)
+    }
+
+    /// Deletes a folder. Either only if empty or recursively. Accepts either a folder id (u64), a folder path (String) or any other pCloud object describing a folder (like Metadata)
+    pub fn delete_folder<'a, T: TryInto<PCloudFolder>>(
+        &self,
+        folder_like: T,
+    ) -> Result<DeleteFolderRequestBuilder, Box<dyn 'a + std::error::Error>>
+    where
+        T::Error: 'a + std::error::Error,
+    {
+        DeleteFolderRequestBuilder::for_folder(self, folder_like)
     }
 
     /// Returns the metadata of a file. Accepts either a file id (u64), a file path (String) or any other pCloud object describing a file (like Metadata)
