@@ -1454,7 +1454,12 @@ impl PCloudClient {
 
         let best_host = match api_servers.result {
             pcloud_model::PCloudResult::Ok => {
-                format!("https://{}", api_servers.api.get(0).unwrap())
+                let best_host_url = api_servers.api.get(0).unwrap();
+                debug!(
+                    "Found nearest pCloud API endpoint https://{} for default endpoint {}",
+                    best_host_url, host
+                );
+                format!("https://{}", best_host_url)
             }
             _ => host.to_string(),
         };

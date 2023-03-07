@@ -4,7 +4,7 @@ use chrono::{DateTime, TimeZone, Utc};
 use serde::{Deserialize, Serialize};
 use serde_repr::*;
 
-#[derive(Serialize_repr, Deserialize_repr, PartialEq, Debug)]
+#[derive(Serialize_repr, Deserialize_repr, PartialEq, Debug, Clone)]
 #[repr(u16)]
 pub enum PCloudResult {
     Ok = 0,
@@ -131,6 +131,23 @@ pub enum FileIcon {
     Folder,
 }
 
+/// Implemented by all structs having a PCloud Result
+pub trait WithPCloudResult {
+    /// Returns the result
+    fn get_result(&self) -> PCloudResult;
+
+    /// Checks if the operation was 'Ok', if not Error is returned
+    fn assert_ok(self) -> Result<Self, PCloudResult>
+    where
+        Self: Sized,
+    {
+        match self.get_result() {
+            PCloudResult::Ok => Ok(self),
+            x => Err(x),
+        }
+    }
+}
+
 /// Result of the `getpublinkdownload` or `getfilelink` calls
 /// see https://docs.pcloud.com/methods/public_links/getpublinkdownload.html
 /// see https://docs.pcloud.com/methods/streaming/getfilelink.html
@@ -144,6 +161,12 @@ pub struct DownloadLink {
     pub expires: Option<DateTime<Utc>>,
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub hosts: Vec<String>,
+}
+
+impl WithPCloudResult for DownloadLink {
+    fn get_result(&self) -> PCloudResult {
+        self.result.clone()
+    }
 }
 
 /// Result of the `getfilepublink` call
@@ -172,6 +195,12 @@ pub struct PublicFileLink {
     pub modified: Option<DateTime<Utc>>,
     pub downloadenabled: Option<bool>,
     pub downloads: Option<u64>,
+}
+
+impl WithPCloudResult for PublicFileLink {
+    fn get_result(&self) -> PCloudResult {
+        self.result.clone()
+    }
 }
 
 /// Result of the `diff` call
@@ -402,6 +431,12 @@ pub struct ApiServers {
     pub api: Vec<String>,
 }
 
+impl WithPCloudResult for ApiServers {
+    fn get_result(&self) -> PCloudResult {
+        self.result.clone()
+    }
+}
+
 /// Result of fetching metadata of files or folders
 /// see https://docs.pcloud.com/methods/file/stat.html
 /// see https://docs.pcloud.com/methods/folder/listfolder.html
@@ -414,6 +449,11 @@ pub struct FileOrFolderStat {
     pub metadata: Option<Metadata>,
 }
 
+impl WithPCloudResult for FileOrFolderStat {
+    fn get_result(&self) -> PCloudResult {
+        self.result.clone()
+    }
+}
 /// Result of the deletefolderrecursive operation
 /// see https://docs.pcloud.com/methods/folder/deletefolderrecursive.html
 #[derive(Serialize, Deserialize, Debug)]
@@ -426,6 +466,12 @@ pub struct FolderRecursivlyDeleted {
     /// number of deleted folders
     #[serde(skip_serializing_if = "Option::is_none")]
     pub deletedfolders: Option<u64>,
+}
+
+impl WithPCloudResult for FolderRecursivlyDeleted {
+    fn get_result(&self) -> PCloudResult {
+        self.result.clone()
+    }
 }
 
 /// Result of calculating file checksums
@@ -446,6 +492,12 @@ pub struct FileChecksums {
     /// SHA-256 checksum is returned in Europe only
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sha256: Option<String>,
+}
+
+impl WithPCloudResult for FileChecksums {
+    fn get_result(&self) -> PCloudResult {
+        self.result.clone()
+    }
 }
 
 /// Result of fetching user metadata
@@ -476,6 +528,12 @@ pub struct UserInfo {
     pub quota: Option<u64>,
 }
 
+impl WithPCloudResult for UserInfo {
+    fn get_result(&self) -> PCloudResult {
+        self.result.clone()
+    }
+}
+
 /// Result of a file upload operation
 /// see https://docs.pcloud.com/methods/file/uploadfile.html
 #[derive(Serialize, Deserialize, Debug)]
@@ -488,6 +546,12 @@ pub struct UploadedFile {
     pub metadata: Vec<Metadata>,
 }
 
+impl WithPCloudResult for UploadedFile {
+    fn get_result(&self) -> PCloudResult {
+        self.result.clone()
+    }
+}
+
 /// Result of log out
 /// see https://docs.pcloud.com/methods/auth/logout.html
 #[derive(Serialize, Deserialize, Debug)]
@@ -498,6 +562,12 @@ pub struct LogoutResponse {
     pub auth_deleted: Option<bool>,
 }
 
+impl WithPCloudResult for LogoutResponse {
+    fn get_result(&self) -> PCloudResult {
+        self.result.clone()
+    }
+}
+
 /// Converts a DateTime for pCloud URLs
 pub fn format_date_time_for_pcloud<Tz>(datetime: &DateTime<Tz>) -> String
 where
@@ -506,8 +576,6 @@ where
 {
     let format = "%a, %d %b %Y %H:%M:%S %z";
     format!("{}", datetime.format(format))
-
-    // format!("{}", datetime.timestamp_millis() / 1000)
 }
 
 /// pCloud Date format for serializing / deserializing
