@@ -62,7 +62,7 @@ impl TryInto<PCloudFile> for &Metadata {
     }
 }
 
-/// Extract folder id from pCloud file or folder metadata response
+/// Extract file id from pCloud file or folder metadata response
 impl TryInto<PCloudFile> for &FileOrFolderStat {
     type Error = PCloudResult;
     fn try_into(self) -> Result<PCloudFile, PCloudResult> {
@@ -142,6 +142,7 @@ impl TryInto<PCloudFolder> for &Metadata {
     }
 }
 
+/// Extract folder id from pCloud file or folder metadata response
 impl TryInto<PCloudFolder> for &FileOrFolderStat {
     type Error = PCloudResult;
 
@@ -194,12 +195,14 @@ impl DeleteFolderRequestBuilder {
 
         let mut r = self.client.client.get(url);
 
-        if self.path.is_some() {
-            r = r.query(&[("path", self.path.unwrap())]);
+        if let Some(p) = self.path {
+            debug!("Deleting folder {} recursively", p);
+            r = r.query(&[("path", p)]);
         }
 
-        if self.folder_id.is_some() {
-            r = r.query(&[("folderid", self.folder_id.unwrap())]);
+        if let Some(id) = self.folder_id {
+            debug!("Deleting folder with {} recursively", id);
+            r = r.query(&[("folderid", id)]);
         }
 
         r = self.client.add_token(r);
@@ -221,12 +224,14 @@ impl DeleteFolderRequestBuilder {
 
         let mut r = self.client.client.get(url);
 
-        if self.path.is_some() {
-            r = r.query(&[("path", self.path.unwrap())]);
+        if let Some(p) = self.path {
+            debug!("Deleting folder {} if empty", p);
+            r = r.query(&[("path", p)]);
         }
 
-        if self.folder_id.is_some() {
-            r = r.query(&[("folderid", self.folder_id.unwrap())]);
+        if let Some(id) = self.folder_id {
+            debug!("Deleting folder with {} if empty", id);
+            r = r.query(&[("folderid", id)]);
         }
 
         r = self.client.add_token(r);
@@ -297,12 +302,14 @@ impl CreateFolderRequestBuilder {
 
         let mut r = self.client.client.get(url);
 
-        if self.path.is_some() {
-            r = r.query(&[("path", self.path.unwrap())]);
+        if let Some(p) = self.path {
+            debug!("Creating folder {} in folder {}", self.name, p);
+            r = r.query(&[("path", p)]);
         }
 
-        if self.folder_id.is_some() {
-            r = r.query(&[("folderid", self.folder_id.unwrap())]);
+        if let Some(id) = self.folder_id {
+            debug!("Creating folder {} in folder {}", self.name, id);
+            r = r.query(&[("folderid", id)]);
         }
 
         r = r.query(&[("name", self.name)]);
@@ -316,6 +323,225 @@ impl CreateFolderRequestBuilder {
             .await?
             .assert_ok()?;
         Ok(stat)
+    }
+}
+
+pub struct CopyFolderRequestBuilder {
+    /// Client to actually perform the request
+    client: PCloudClient,
+    /// source file path
+    from_path: Option<String>,
+    /// source file id
+    from_folder_id: Option<u64>,
+    /// destination folder path
+    to_path: Option<String>,
+    /// destination folder id
+    to_folder_id: Option<u64>,
+    /// New file name
+    to_name: Option<String>,
+    /// If it is set and files with the same name already exist, overwriting will be preformed (otherwise error 2004 will be returned)
+    overwrite: bool,
+    /// If set will skip files that already exist
+    skipexisting: bool,
+    ///  If it is set only the content of source folder will be copied otherwise the folder itself is copied
+    copycontentonly: bool,
+}
+
+#[allow(dead_code)]
+impl CopyFolderRequestBuilder {
+    /// Copies a folder identified by folderid or path to either topath or tofolderid.
+    fn copy_folder<'a, S: TryInto<PCloudFolder>, T: TryInto<PCloudFolder>>(
+        client: &PCloudClient,
+        folder_like: S,
+        target_folder_like: T,
+    ) -> Result<CopyFolderRequestBuilder, Box<dyn 'a + std::error::Error>>
+    where
+        T::Error: 'a + std::error::Error,
+        S::Error: 'a + std::error::Error,
+    {
+        let source: PCloudFolder = folder_like.try_into()?;
+        let target: PCloudFolder = target_folder_like.try_into()?;
+
+        if (source.folder_id.is_some() || source.path.is_some())
+            && (target.folder_id.is_some() || target.path.is_some())
+        {
+            Ok(CopyFolderRequestBuilder {
+                from_path: source.path,
+                from_folder_id: source.folder_id,
+                to_path: target.path,
+                to_folder_id: target.folder_id,
+                client: client.clone(),
+                to_name: None,
+                overwrite: true,
+                skipexisting: false,
+                copycontentonly: false,
+            })
+        } else {
+            Err(pcloud_model::PCloudResult::NoFileIdOrPathProvided)?
+        }
+    }
+
+    /// If it is set (default true) and files with the same name already exist, overwriting will be preformed (otherwise error 2004 will be returned)
+    pub fn overwrite(mut self, value: bool) -> CopyFolderRequestBuilder {
+        self.overwrite = value;
+        self
+    }
+
+    /// If set will skip files that already exist
+    pub fn skipexisting(mut self, value: bool) -> CopyFolderRequestBuilder {
+        self.skipexisting = value;
+        self
+    }
+
+    /// If it is set only the content of source folder will be copied otherwise the folder itself is copied
+    pub fn copycontentonly(mut self, value: bool) -> CopyFolderRequestBuilder {
+        self.copycontentonly = value;
+        self
+    }
+
+    /// Execute the copy operation
+    pub async fn execute(
+        self,
+    ) -> Result<pcloud_model::FileOrFolderStat, Box<dyn std::error::Error>> {
+        let mut r = self
+            .client
+            .client
+            .post(format!("{}/copyfolder", self.client.api_host));
+
+        if self.from_path.is_some() {
+            r = r.query(&[("path", self.from_path.unwrap())]);
+        }
+
+        if self.from_folder_id.is_some() {
+            r = r.query(&[("folderid", self.from_folder_id.unwrap())]);
+        }
+
+        if self.to_path.is_some() {
+            r = r.query(&[("topath", self.to_path.unwrap())]);
+        }
+
+        if self.to_folder_id.is_some() {
+            r = r.query(&[("tofolderid", self.to_folder_id.unwrap())]);
+        }
+
+        if self.to_name.is_some() {
+            r = r.query(&[("toname", self.to_name.unwrap())]);
+        }
+
+        if !self.overwrite {
+            r = r.query(&[("noover", "1")]);
+        }
+
+        if !self.skipexisting {
+            r = r.query(&[("skipexisting", "1")]);
+        }
+
+        if !self.copycontentonly {
+            r = r.query(&[("copycontentonly", "1")]);
+        }
+
+        r = self.client.add_token(r);
+
+        let result = r
+            .send()
+            .await?
+            .json::<pcloud_model::FileOrFolderStat>()
+            .await?
+            .assert_ok()?;
+        Ok(result)
+    }
+}
+
+pub struct MoveFolderRequestBuilder {
+    /// Client to actually perform the request
+    client: PCloudClient,
+    /// source file path
+    from_path: Option<String>,
+    /// source file id
+    from_folder_id: Option<u64>,
+    /// destination folder path
+    to_path: Option<String>,
+    /// destination folder id
+    to_folder_id: Option<u64>,
+    /// New file name
+    to_name: Option<String>,
+}
+
+#[allow(dead_code)]
+impl MoveFolderRequestBuilder {
+    /// Renames (and/or moves) a folder identified by folderid or path to either topath (if topath is a existing folder to place source folder without new name for the folder it MUST end with slash - /newpath/) or tofolderid/toname (one or both can be provided).
+    fn move_folder<'a, S: TryInto<PCloudFolder>, T: TryInto<PCloudFolder>>(
+        client: &PCloudClient,
+        folder_like: S,
+        target_folder_like: T,
+    ) -> Result<MoveFolderRequestBuilder, Box<dyn 'a + std::error::Error>>
+    where
+        T::Error: 'a + std::error::Error,
+        S::Error: 'a + std::error::Error,
+    {
+        let source: PCloudFolder = folder_like.try_into()?;
+        let target: PCloudFolder = target_folder_like.try_into()?;
+
+        if (source.folder_id.is_some() || source.path.is_some())
+            && (target.folder_id.is_some() || target.path.is_some())
+        {
+            Ok(MoveFolderRequestBuilder {
+                from_path: source.path,
+                from_folder_id: source.folder_id,
+                to_path: target.path,
+                to_folder_id: target.folder_id,
+                client: client.clone(),
+                to_name: None,
+            })
+        } else {
+            Err(pcloud_model::PCloudResult::NoFileIdOrPathProvided)?
+        }
+    }
+
+    /// name of the destination file. If omitted, then the original filename is used
+    pub fn with_new_name(mut self, value: &str) -> MoveFolderRequestBuilder {
+        self.to_name = Some(value.to_string());
+        self
+    }
+
+    // Execute the move operation
+    pub async fn execute(
+        self,
+    ) -> Result<pcloud_model::FileOrFolderStat, Box<dyn std::error::Error>> {
+        let mut r = self
+            .client
+            .client
+            .post(format!("{}/renamefolder", self.client.api_host));
+
+        if self.from_path.is_some() {
+            r = r.query(&[("path", self.from_path.unwrap())]);
+        }
+
+        if self.from_folder_id.is_some() {
+            r = r.query(&[("folderid", self.from_folder_id.unwrap())]);
+        }
+
+        if self.to_path.is_some() {
+            r = r.query(&[("topath", self.to_path.unwrap())]);
+        }
+
+        if self.to_folder_id.is_some() {
+            r = r.query(&[("tofolderid", self.to_folder_id.unwrap())]);
+        }
+
+        if self.to_name.is_some() {
+            r = r.query(&[("toname", self.to_name.unwrap())]);
+        }
+
+        r = self.client.add_token(r);
+
+        let result = r
+            .send()
+            .await?
+            .json::<pcloud_model::FileOrFolderStat>()
+            .await?
+            .assert_ok()?;
+        Ok(result)
     }
 }
 
@@ -372,6 +598,7 @@ impl CopyFileRequestBuilder {
             Err(pcloud_model::PCloudResult::NoFileIdOrPathProvided)?
         }
     }
+
     // If it is set (default true) and file with the specified name already exists, it will be overwritten
     pub fn overwrite(mut self, value: bool) -> CopyFileRequestBuilder {
         self.overwrite = value;
@@ -1430,6 +1657,7 @@ impl PCloudClient {
         let userinfo = r.send().await?.json::<pcloud_model::UserInfo>().await?;
 
         if userinfo.result == PCloudResult::Ok && userinfo.auth.is_some() {
+            debug!("Successfull login for user {}", username);
             Ok(userinfo.auth.unwrap())
         } else {
             Err(PCloudResult::AccessDenied)?
@@ -1547,6 +1775,32 @@ impl PCloudClient {
         DeleteFolderRequestBuilder::for_folder(self, folder_like)
     }
 
+    /// Copies a folder identified by folderid or path to either topath or tofolderid.
+    pub fn copy_folder<'a, S: TryInto<PCloudFolder>, T: TryInto<PCloudFolder>>(
+        &self,
+        folder_like: S,
+        target_folder_like: T,
+    ) -> Result<CopyFolderRequestBuilder, Box<dyn 'a + std::error::Error>>
+    where
+        S::Error: 'a + std::error::Error,
+        T::Error: 'a + std::error::Error,
+    {
+        CopyFolderRequestBuilder::copy_folder(self, folder_like, target_folder_like)
+    }
+
+    /// Renames (and/or moves) a folder identified by folderid or path to either topath (if topath is a existing folder to place source folder without new name for the folder it MUST end with slash - /newpath/) or tofolderid/toname (one or both can be provided).
+    pub fn move_folder<'a, S: TryInto<PCloudFolder>, T: TryInto<PCloudFolder>>(
+        &self,
+        folder_like: S,
+        target_folder_like: T,
+    ) -> Result<MoveFolderRequestBuilder, Box<dyn 'a + std::error::Error>>
+    where
+        S::Error: 'a + std::error::Error,
+        T::Error: 'a + std::error::Error,
+    {
+        MoveFolderRequestBuilder::move_folder(self, folder_like, target_folder_like)
+    }
+
     /// Copies the given file to the given folder. Either set a target folder id and then the target with with_new_name or give a full new file path as target path
     pub fn copy_file<'a, S: TryInto<PCloudFile>, T: TryInto<PCloudFolder>>(
         &self,
@@ -1628,14 +1882,9 @@ impl PCloudClient {
         &self,
         link: &pcloud_model::PublicFileLink,
     ) -> Result<pcloud_model::DownloadLink, Box<dyn std::error::Error>> {
-        let result = PublicFileDownloadRequestBuilder::for_public_file(
-            self,
-            link.code.clone().unwrap().as_str(),
-        )
-        .get()
-        .await?;
-
-        Ok(result)
+        PublicFileDownloadRequestBuilder::for_public_file(self, link.code.clone().unwrap().as_str())
+            .get()
+            .await
     }
 
     /// Returns the download link for a file.  Accepts either a file id (u64), a file path (String) or any other pCloud object describing a file (like Metadata)
@@ -1646,11 +1895,9 @@ impl PCloudClient {
     where
         T::Error: 'a + std::error::Error,
     {
-        let result = FileDownloadRequestBuilder::for_file(self, file_like)?
+        FileDownloadRequestBuilder::for_file(self, file_like)?
             .get()
-            .await?;
-
-        Ok(result)
+            .await
     }
 
     /// Get user info
@@ -1698,8 +1945,6 @@ impl PCloudClient {
         T::Error: 'a + std::error::Error,
     {
         let link = self.get_download_link_for_file(file_like).await?;
-        let file = self.download_link(&link).await?;
-
-        Ok(file)
+        self.download_link(&link).await
     }
 }
