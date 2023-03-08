@@ -734,7 +734,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "pcloudeventstream"
+name = "pcloud-async-api"
 version = "0.1.0"
 dependencies = [
  "chrono",
