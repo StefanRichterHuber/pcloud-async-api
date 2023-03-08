@@ -408,24 +408,24 @@ impl CopyFolderRequestBuilder {
             .client
             .post(format!("{}/copyfolder", self.client.api_host));
 
-        if self.from_path.is_some() {
-            r = r.query(&[("path", self.from_path.unwrap())]);
+        if let Some(v) = self.from_path {
+            r = r.query(&[("path", v)]);
         }
 
-        if self.from_folder_id.is_some() {
-            r = r.query(&[("folderid", self.from_folder_id.unwrap())]);
+        if let Some(v) = self.from_folder_id {
+            r = r.query(&[("folderid", v)]);
         }
 
-        if self.to_path.is_some() {
-            r = r.query(&[("topath", self.to_path.unwrap())]);
+        if let Some(v) = self.to_path {
+            r = r.query(&[("topath", v)]);
         }
 
-        if self.to_folder_id.is_some() {
-            r = r.query(&[("tofolderid", self.to_folder_id.unwrap())]);
+        if let Some(v) = self.to_folder_id {
+            r = r.query(&[("tofolderid", v)]);
         }
 
-        if self.to_name.is_some() {
-            r = r.query(&[("toname", self.to_name.unwrap())]);
+        if let Some(v) = self.to_name {
+            r = r.query(&[("toname", v)]);
         }
 
         if !self.overwrite {
@@ -513,24 +513,24 @@ impl MoveFolderRequestBuilder {
             .client
             .post(format!("{}/renamefolder", self.client.api_host));
 
-        if self.from_path.is_some() {
-            r = r.query(&[("path", self.from_path.unwrap())]);
+        if let Some(v) = self.from_path {
+            r = r.query(&[("path", v)]);
         }
 
-        if self.from_folder_id.is_some() {
-            r = r.query(&[("folderid", self.from_folder_id.unwrap())]);
+        if let Some(v) = self.from_folder_id {
+            r = r.query(&[("folderid", v)]);
         }
 
-        if self.to_path.is_some() {
-            r = r.query(&[("topath", self.to_path.unwrap())]);
+        if let Some(v) = self.to_path {
+            r = r.query(&[("topath", v)]);
         }
 
-        if self.to_folder_id.is_some() {
-            r = r.query(&[("tofolderid", self.to_folder_id.unwrap())]);
+        if let Some(v) = self.to_folder_id {
+            r = r.query(&[("tofolderid", v)]);
         }
 
-        if self.to_name.is_some() {
-            r = r.query(&[("toname", self.to_name.unwrap())]);
+        if let Some(v) = self.to_name {
+            r = r.query(&[("toname", v)]);
         }
 
         r = self.client.add_token(r);
@@ -640,32 +640,32 @@ impl CopyFileRequestBuilder {
             .client
             .post(format!("{}/copyfile", self.client.api_host));
 
-        if self.from_path.is_some() {
-            r = r.query(&[("path", self.from_path.unwrap())]);
+        if let Some(v) = self.from_path {
+            r = r.query(&[("path", v)]);
         }
 
-        if self.from_file_id.is_some() {
-            r = r.query(&[("fileid", self.from_file_id.unwrap())]);
+        if let Some(v) = self.from_file_id {
+            r = r.query(&[("fileid", v)]);
         }
 
-        if self.to_path.is_some() {
-            r = r.query(&[("topath", self.to_path.unwrap())]);
+        if let Some(v) = self.to_path {
+            r = r.query(&[("topath", v)]);
         }
 
-        if self.to_folder_id.is_some() {
-            r = r.query(&[("tofolderid", self.to_folder_id.unwrap())]);
+        if let Some(v) = self.to_folder_id {
+            r = r.query(&[("tofolderid", v)]);
         }
 
-        if self.mtime.is_some() {
-            r = r.query(&[("mtime", self.mtime.unwrap())]);
+        if let Some(v) = self.mtime {
+            r = r.query(&[("mtime", v)]);
         }
 
-        if self.ctime.is_some() {
-            r = r.query(&[("ctime", self.ctime.unwrap())]);
+        if let Some(v) = self.ctime {
+            r = r.query(&[("ctime", v)]);
         }
 
-        if self.to_name.is_some() {
-            r = r.query(&[("toname", self.to_name.unwrap())]);
+        if let Some(v) = self.to_name {
+            r = r.query(&[("toname", v)]);
         }
 
         if !self.overwrite {
@@ -744,24 +744,24 @@ impl MoveFileRequestBuilder {
             .client
             .post(format!("{}/renamefile", self.client.api_host));
 
-        if self.from_path.is_some() {
-            r = r.query(&[("path", self.from_path.unwrap())]);
+        if let Some(v) = self.from_path {
+            r = r.query(&[("path", v)]);
         }
 
-        if self.from_file_id.is_some() {
-            r = r.query(&[("fileid", self.from_file_id.unwrap())]);
+        if let Some(v) = self.from_file_id {
+            r = r.query(&[("fileid", v)]);
         }
 
-        if self.to_path.is_some() {
-            r = r.query(&[("topath", self.to_path.unwrap())]);
+        if let Some(v) = self.to_path {
+            r = r.query(&[("topath", v)]);
         }
 
-        if self.to_folder_id.is_some() {
-            r = r.query(&[("tofolderid", self.to_folder_id.unwrap())]);
+        if let Some(v) = self.to_folder_id {
+            r = r.query(&[("tofolderid", v)]);
         }
 
-        if self.to_name.is_some() {
-            r = r.query(&[("toname", self.to_name.unwrap())]);
+        if let Some(v) = self.to_name {
+            r = r.query(&[("toname", v)]);
         }
 
         r = self.client.add_token(r);
@@ -879,12 +879,12 @@ impl UploadRequestBuilder {
             .client
             .post(format!("{}/uploadfile", self.client.api_host));
 
-        if self.path.is_some() {
-            r = r.query(&[("path", self.path.unwrap())]);
+        if let Some(v) = self.path {
+            r = r.query(&[("path", v)]);
         }
 
-        if self.folder_id.is_some() {
-            r = r.query(&[("folderid", self.folder_id.unwrap())]);
+        if let Some(v) = self.folder_id {
+            r = r.query(&[("folderid", v)]);
         }
 
         if self.no_partial {
@@ -895,12 +895,12 @@ impl UploadRequestBuilder {
             r = r.query(&[("renameifexists", "1")]);
         }
 
-        if self.mtime.is_some() {
-            r = r.query(&[("mtime", self.mtime.unwrap())]);
+        if let Some(v) = self.mtime {
+            r = r.query(&[("mtime", v)]);
         }
 
-        if self.ctime.is_some() {
-            r = r.query(&[("ctime", self.ctime.unwrap())]);
+        if let Some(v) = self.ctime {
+            r = r.query(&[("ctime", v)]);
         }
 
         r = self.client.add_token(r);
@@ -991,12 +991,14 @@ impl ListFolderRequestBuilder {
             .client
             .get(format!("{}/listfolder", self.client.api_host));
 
-        if self.path.is_some() {
-            r = r.query(&[("path", self.path.unwrap())]);
+        if let Some(v) = self.path {
+            debug!("List folder {}", v);
+            r = r.query(&[("path", v)]);
         }
 
-        if self.folder_id.is_some() {
-            r = r.query(&[("folderid", self.folder_id.unwrap())]);
+        if let Some(v) = self.folder_id {
+            debug!("List folder {}", v);
+            r = r.query(&[("folderid", v)]);
         }
 
         if self.recursive {
@@ -1091,27 +1093,28 @@ impl DiffRequestBuilder {
         let url = format!("{}/diff", self.client.api_host);
         let mut r = self.client.client.get(url);
 
-        if self.diff_id.is_some() {
-            r = r.query(&[("diffid", self.diff_id.unwrap())]);
+        if let Some(v) = self.diff_id {
+            r = r.query(&[("diffid", v)]);
         }
 
-        if self.last.is_some() {
-            r = r.query(&[("last", self.last.unwrap())]);
+        if let Some(v) = self.last {
+            r = r.query(&[("last", v)]);
         }
 
-        if self.limit.is_some() {
-            r = r.query(&[("limit", self.limit.unwrap())]);
+        if let Some(v) = self.limit {
+            r = r.query(&[("limit", v)]);
         }
 
         if self.block {
             r = r.query(&[("block", "1")]);
         }
 
+        if let Some(v) = self.after {
+            r = r.query(&[("after", v)]);
+        }
+
         r = self.client.add_token(r);
 
-        if self.after.is_some() {
-            r = r.query(&[("after", self.after.unwrap())]);
-        }
         let diff = r.send().await?.json::<pcloud_model::Diff>().await?;
         Ok(diff)
     }
@@ -1121,15 +1124,15 @@ pub struct PublicFileLinkRequestBuilder {
     /// Client to actually perform the request
     client: PCloudClient,
     /// file id of the file for public link
-    fileid: Option<u64>,
+    file_id: Option<u64>,
     /// path to the file for public link
     path: Option<String>,
     /// Datetime when the link will stop working
     expire: Option<String>,
-    maxdownloads: Option<u64>,
-    maxtraffic: Option<u64>,
-    shortlink: bool,
-    linkpassword: Option<String>,
+    max_downloads: Option<u64>,
+    max_traffic: Option<u64>,
+    short_link: bool,
+    link_password: Option<String>,
 }
 
 #[allow(dead_code)]
@@ -1145,14 +1148,14 @@ impl PublicFileLinkRequestBuilder {
 
         if f.file_id.is_some() || f.path.is_some() {
             Ok(PublicFileLinkRequestBuilder {
-                fileid: f.file_id,
+                file_id: f.file_id,
                 path: f.path,
                 client: client.clone(),
                 expire: None,
-                maxdownloads: None,
-                maxtraffic: None,
-                shortlink: false,
-                linkpassword: None,
+                max_downloads: None,
+                max_traffic: None,
+                short_link: false,
+                link_password: None,
             })
         } else {
             Err(pcloud_model::PCloudResult::NoFileIdOrPathProvided)?
@@ -1171,25 +1174,25 @@ impl PublicFileLinkRequestBuilder {
 
     /// Maximum number of downloads for this file
     pub fn with_max_downloads(mut self, value: u64) -> PublicFileLinkRequestBuilder {
-        self.maxdownloads = Some(value);
+        self.max_downloads = Some(value);
         self
     }
 
     /// Maximum traffic that this link will consume (in bytes, started downloads will not be cut to fit in this limit)
     pub fn with_max_traffic(mut self, value: u64) -> PublicFileLinkRequestBuilder {
-        self.maxtraffic = Some(value);
+        self.max_traffic = Some(value);
         self
     }
 
     ///  If set, a short link will also be generated
     pub fn with_shortlink(mut self, value: bool) -> PublicFileLinkRequestBuilder {
-        self.shortlink = value;
+        self.short_link = value;
         self
     }
 
     ///  Sets password for the link.
     pub fn with_password(mut self, value: &str) -> PublicFileLinkRequestBuilder {
-        self.linkpassword = Some(value.to_string());
+        self.link_password = Some(value.to_string());
         self
     }
 
@@ -1199,32 +1202,34 @@ impl PublicFileLinkRequestBuilder {
             .client
             .get(format!("{}/getfilepublink", self.client.api_host));
 
-        if self.path.is_some() {
-            r = r.query(&[("path", self.path.unwrap())]);
+        if let Some(id) = self.file_id {
+            debug!("Requesting public link for file {}", id);
+            r = r.query(&[("fileid", id)]);
         }
 
-        if self.fileid.is_some() {
-            r = r.query(&[("fileid", self.fileid.unwrap())]);
+        if let Some(p) = self.path {
+            debug!("Requesting public link for file {}", p);
+            r = r.query(&[("path", p)]);
         }
 
-        if self.maxdownloads.is_some() {
-            r = r.query(&[("maxdownloads", self.maxdownloads.unwrap())]);
+        if let Some(v) = self.max_downloads {
+            r = r.query(&[("maxdownloads", v)]);
         }
 
-        if self.linkpassword.is_some() {
-            r = r.query(&[("linkpassword", self.linkpassword.unwrap())]);
+        if let Some(v) = self.link_password {
+            r = r.query(&[("linkpassword", v)]);
         }
 
-        if self.maxtraffic.is_some() {
-            r = r.query(&[("maxtraffic", self.maxtraffic.unwrap())]);
+        if let Some(v) = self.max_traffic {
+            r = r.query(&[("maxtraffic", v)]);
         }
 
-        if self.shortlink {
+        if self.short_link {
             r = r.query(&[("shortlink", "1")]);
         }
 
-        if self.expire.is_some() {
-            r = r.query(&[("expire", self.expire.unwrap())]);
+        if let Some(v) = self.expire {
+            r = r.query(&[("expire", v)]);
         }
 
         r = self.client.add_token(r);
@@ -1245,7 +1250,7 @@ pub struct PublicFileDownloadRequestBuilder {
     /// either 'code' or 'shortcode'
     code: String,
     ///  File id, if the link is to a folder
-    fileid: Option<u64>,
+    file_id: Option<u64>,
 }
 
 #[allow(dead_code)]
@@ -1254,7 +1259,7 @@ impl PublicFileDownloadRequestBuilder {
     fn for_public_file(client: &PCloudClient, code: &str) -> PublicFileDownloadRequestBuilder {
         PublicFileDownloadRequestBuilder {
             code: code.to_string(),
-            fileid: None,
+            file_id: None,
             client: client.clone(),
         }
     }
@@ -1267,7 +1272,7 @@ impl PublicFileDownloadRequestBuilder {
     ) -> PublicFileDownloadRequestBuilder {
         PublicFileDownloadRequestBuilder {
             code: code.to_string(),
-            fileid: Some(file_id),
+            file_id: Some(file_id),
             client: client.clone(),
         }
     }
@@ -1281,8 +1286,8 @@ impl PublicFileDownloadRequestBuilder {
 
         r = r.query(&[("code", self.code)]);
 
-        if self.fileid.is_some() {
-            r = r.query(&[("fileid", self.fileid.unwrap())]);
+        if let Some(id) = self.file_id {
+            r = r.query(&[("fileid", id)]);
         }
 
         r = self.client.add_token(r);
@@ -1334,12 +1339,14 @@ impl ChecksumFileRequestBuilder {
             .client
             .get(format!("{}/checksumfile", self.client.api_host));
 
-        if self.file_id.is_some() {
-            r = r.query(&[("fileid", self.file_id.unwrap())]);
+        if let Some(id) = self.file_id {
+            debug!("Requesting file checksums for file {}", id);
+            r = r.query(&[("fileid", id)]);
         }
 
-        if self.path.is_some() {
-            r = r.query(&[("path", self.path.unwrap())]);
+        if let Some(p) = self.path {
+            debug!("Requesting file checksums for file {}", p);
+            r = r.query(&[("path", p)]);
         }
 
         r = self.client.add_token(r);
@@ -1393,12 +1400,14 @@ impl FileDeleteRequestBuilder {
             .client
             .get(format!("{}/deletefile", self.client.api_host));
 
-        if self.file_id.is_some() {
-            r = r.query(&[("fileid", self.file_id.unwrap())]);
+        if let Some(id) = self.file_id {
+            debug!("Requesting delete for file {}", id);
+            r = r.query(&[("fileid", id)]);
         }
 
-        if self.path.is_some() {
-            r = r.query(&[("path", self.path.unwrap())]);
+        if let Some(p) = self.path {
+            debug!("Requesting delete for file {}", p);
+            r = r.query(&[("path", p)]);
         }
 
         r = self.client.add_token(r);
@@ -1450,12 +1459,14 @@ impl FileDownloadRequestBuilder {
             .client
             .get(format!("{}/getfilelink", self.client.api_host));
 
-        if self.file_id.is_some() {
-            r = r.query(&[("fileid", self.file_id.unwrap())]);
+        if let Some(id) = self.file_id {
+            debug!("Requesting download for file {}", id);
+            r = r.query(&[("fileid", id)]);
         }
 
-        if self.path.is_some() {
-            r = r.query(&[("path", self.path.unwrap())]);
+        if let Some(p) = self.path {
+            debug!("Requesting download for file {}", p);
+            r = r.query(&[("path", p)]);
         }
 
         r = self.client.add_token(r);
@@ -1506,12 +1517,14 @@ impl FileStatRequestBuilder {
             .client
             .get(format!("{}/stat", self.client.api_host));
 
-        if self.file_id.is_some() {
-            r = r.query(&[("fileid", self.file_id.unwrap())]);
+        if let Some(id) = self.file_id {
+            debug!("Requesting file metadata for file {}", id);
+            r = r.query(&[("fileid", id)]);
         }
 
-        if self.path.is_some() {
-            r = r.query(&[("path", self.path.unwrap())]);
+        if let Some(p) = self.path {
+            debug!("Requesting file metadata for file {}", p);
+            r = r.query(&[("path", p)]);
         }
 
         r = self.client.add_token(r);
