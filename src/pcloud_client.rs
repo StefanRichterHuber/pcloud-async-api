@@ -1933,7 +1933,7 @@ impl PCloudClient {
             .await
     }
 
-    /// Returns the download link for a file.  Accepts either a file id (u64), a file path (String) or any other pCloud object describing a file (like Metadata)
+    /// Returns the download link for a file. Accepts either a file id (u64), a file path (String) or any other pCloud object describing a file (like Metadata)
     pub async fn get_download_link_for_file<'a, T: TryInto<PCloudFile>>(
         &self,
         file_like: T,
@@ -1964,24 +1964,12 @@ impl PCloudClient {
         &self,
         link: &pcloud_model::DownloadLink,
     ) -> Result<Response, Box<dyn std::error::Error>> {
-        if link.hosts.len() > 0 && link.path.is_some() {
-            let url = format!(
-                "https://{}{}",
-                link.hosts.get(0).unwrap(),
-                link.path.as_ref().unwrap()
-            );
+        if let Some(url) = link.into_url() {
+            debug!("Downloading file link {}", url);
 
-            debug!(
-                "Downloading file link https://{}{}",
-                link.hosts.get(0).unwrap(),
-                link.path.as_ref().unwrap()
-            );
-
-            let mut r = self.client.get(url);
-
-            r = self.add_token(r);
-
-            let resp = r.send().await?;
+            // No authentication necessary!
+            // r = self.add_token(r);
+            let resp = self.client.get(url).send().await?;
 
             Ok(resp)
         } else {

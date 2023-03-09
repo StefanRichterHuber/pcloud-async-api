@@ -163,6 +163,22 @@ pub struct DownloadLink {
     pub hosts: Vec<String>,
 }
 
+impl DownloadLink {
+    /// Converts the given DownloadLink into a full download url for the file. There is no authentication necessary to download the file!
+    pub fn into_url(&self) -> Option<String> {
+        if self.result == PCloudResult::Ok && self.hosts.len() > 0 && self.path.is_some() {
+            let url = format!(
+                "https://{}{}",
+                self.hosts.get(0).unwrap(),
+                self.path.as_ref().unwrap()
+            );
+            Some(url)
+        } else {
+            None
+        }
+    }
+}
+
 impl WithPCloudResult for DownloadLink {
     fn get_result(&self) -> &PCloudResult {
         &self.result

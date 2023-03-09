@@ -60,7 +60,7 @@ async fn test_file_operations() -> Result<(), Box<dyn std::error::Error>> {
     // Does not work because of small rounding errors
     //assert_eq!(date, upload_result.metadata.get(0).unwrap().modified);
     //assert_eq!(date, upload_result.metadata.get(1).unwrap().modified);
-    info!("Created test files");
+    info!("Created test files: {:?}", upload_result.fileids);
 
     let file_id = upload_result.fileids.get(0).unwrap();
     let file_id2 = upload_result.fileids.get(1).unwrap();
@@ -76,8 +76,11 @@ async fn test_file_operations() -> Result<(), Box<dyn std::error::Error>> {
     // Get file metadata
     let metadata = pcloud.get_file_metadata(file_id).await?;
     assert_eq!(PCloudResult::Ok, metadata.result);
-    assert_eq!("test.txt", metadata.metadata.unwrap().name);
-    info!("Downloaded file metadata files");
+    assert_eq!("test.txt", metadata.metadata.as_ref().unwrap().name);
+    info!(
+        "Downloaded file metadata of {}",
+        metadata.metadata.as_ref().unwrap().name
+    );
 
     // Copy one file
     let copy_result = pcloud
@@ -92,12 +95,16 @@ async fn test_file_operations() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     let d1 = pcloud
-        .download_file(&copy_result.metadata.unwrap())
+        .download_file(copy_result.metadata.as_ref().unwrap())
         .await?
         .text()
         .await?;
     assert_eq!("This is nice test content", d1);
-    info!("Copied file");
+    info!(
+        "Copied file {} -> {}",
+        file_id,
+        copy_result.metadata.as_ref().unwrap().name
+    );
 
     // Move one file
     let move_result = pcloud
@@ -111,12 +118,16 @@ async fn test_file_operations() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     let d2 = pcloud
-        .download_file(&move_result.metadata.unwrap())
+        .download_file(move_result.metadata.as_ref().unwrap())
         .await?
         .text()
         .await?;
     assert_eq!("This is another nice test content", d2);
-    info!("Moved file");
+    info!(
+        "Moved file {} -> {}",
+        file_id2,
+        move_result.metadata.as_ref().unwrap().name
+    );
 
     // Fetch checksums
     let checksum_result = pcloud.checksum_file(file_id).await?;
@@ -145,12 +156,12 @@ async fn test_file_operations() -> Result<(), Box<dyn std::error::Error>> {
     assert_eq!(true, files.contains(&String::from("anothertext.txt")));
     // File was moved, so it should no long exist
     assert_eq!(false, files.contains(&String::from("second test.txt")));
-    info!("Listed folder content");
+    info!("Listed folder content: {:?}", files);
 
     // Delete test file
     let delete_result = pcloud.delete_file(file_id).await?;
     assert_eq!(PCloudResult::Ok, delete_result.result);
-    info!("Deleted file");
+    info!("Deleted file {}", delete_result.metadata.unwrap().name);
 
     // Delete test folder
     let deletefolder_result = pcloud
@@ -158,7 +169,7 @@ async fn test_file_operations() -> Result<(), Box<dyn std::error::Error>> {
         .delete_recursive()
         .await?;
     assert_eq!(PCloudResult::Ok, deletefolder_result.result);
-    info!("Deleted folder");
+    info!("Deleted folder {}", folder_name);
 
     Ok(())
 }
