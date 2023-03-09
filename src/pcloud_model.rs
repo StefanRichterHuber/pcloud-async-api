@@ -470,6 +470,40 @@ impl WithPCloudResult for FileOrFolderStat {
         &self.result
     }
 }
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct FileRevision {
+    /// id of the revision
+    pub revisionid: u64,
+    ///  filesize of the given revision of the file
+    pub size: u64,
+    /// file contents hash (same as in metadata)
+    pub hash: u64,
+    /// date/time at which the revision was created
+    #[serde(with = "pcloud_date_format")]
+    pub created: DateTime<Utc>,
+}
+
+/// Result of the listrevisions call
+/// see https://docs.pcloud.com/methods/revisions/listrevisions.html
+#[derive(Serialize, Deserialize, Debug)]
+pub struct RevisionList {
+    /// Result of the operation, must be Ok for further values to be present
+    pub result: PCloudResult,
+    /// Metadata of the targeted file
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub metadata: Option<Metadata>,
+    ///  Lists the revisions as array
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub revisions: Vec<FileRevision>,
+}
+
+impl WithPCloudResult for RevisionList {
+    fn get_result(&self) -> &PCloudResult {
+        &self.result
+    }
+}
+
 /// Result of the deletefolderrecursive operation
 /// see https://docs.pcloud.com/methods/folder/deletefolderrecursive.html
 #[derive(Serialize, Deserialize, Debug)]

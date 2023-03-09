@@ -130,7 +130,7 @@ async fn test_file_operations() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     // Fetch checksums
-    let checksum_result = pcloud.checksum_file(file_id).await?;
+    let checksum_result = pcloud.checksum_file(file_id)?.get().await?;
     assert_eq!(PCloudResult::Ok, checksum_result.result);
     info!("Fetched checksums");
 

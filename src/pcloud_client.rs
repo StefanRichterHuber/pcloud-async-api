@@ -5,6 +5,7 @@ use crate::file_ops::CopyFileRequestBuilder;
 use crate::file_ops::FileDeleteRequestBuilder;
 use crate::file_ops::FileDownloadRequestBuilder;
 use crate::file_ops::FileStatRequestBuilder;
+use crate::file_ops::ListRevisionsRequestBuilder;
 use crate::file_ops::MoveFileRequestBuilder;
 use crate::file_ops::PCloudFile;
 use crate::file_ops::PublicFileDownloadRequestBuilder;
@@ -16,9 +17,8 @@ use crate::folder_ops::DeleteFolderRequestBuilder;
 use crate::folder_ops::ListFolderRequestBuilder;
 use crate::folder_ops::MoveFolderRequestBuilder;
 use crate::folder_ops::PCloudFolder;
-use crate::pcloud_model::{
-    self, Diff, FileChecksums, FileOrFolderStat, PCloudResult, UserInfo, WithPCloudResult,
-};
+use crate::pcloud_model::RevisionList;
+use crate::pcloud_model::{self, Diff, FileOrFolderStat, PCloudResult, UserInfo, WithPCloudResult};
 use chrono::{DateTime, TimeZone};
 use log::{debug, warn};
 use reqwest::{Client, RequestBuilder, Response};
@@ -415,6 +415,19 @@ impl PCloudClient {
         MoveFileRequestBuilder::move_file(self, file_like, target_folder_like)
     }
 
+    /// Lists revisions for a given fileid / path
+    pub async fn list_file_revisions<'a, S: TryInto<PCloudFile>>(
+        &self,
+        file_like: S,
+    ) -> Result<RevisionList, Box<dyn 'a + std::error::Error>>
+    where
+        S::Error: 'a + std::error::Error,
+    {
+        ListRevisionsRequestBuilder::for_file(self, file_like)?
+            .get()
+            .await
+    }
+
     /// Returns the metadata of a file. Accepts either a file id (u64), a file path (String) or any other pCloud object describing a file (like Metadata)
     pub async fn get_file_metadata<'a, T: TryInto<PCloudFile>>(
         &self,
@@ -442,16 +455,14 @@ impl PCloudClient {
     }
 
     /// Requests the checksums of a file. Accepts either a file id (u64), a file path (String) or any other pCloud object describing a file (like Metadata)
-    pub async fn checksum_file<'a, T: TryInto<PCloudFile>>(
+    pub fn checksum_file<'a, T: TryInto<PCloudFile>>(
         &self,
         file_like: T,
-    ) -> Result<FileChecksums, Box<dyn 'a + std::error::Error>>
+    ) -> Result<ChecksumFileRequestBuilder, Box<dyn 'a + std::error::Error>>
     where
         T::Error: 'a + std::error::Error,
     {
-        ChecksumFileRequestBuilder::for_file(self, file_like)?
-            .get()
-            .await
+        ChecksumFileRequestBuilder::for_file(self, file_like)
     }
 
     /// Returns the public link for a pCloud file. Accepts either a file id (u64), a file path (String) or any other pCloud object describing a file (like Metadata)
@@ -476,16 +487,14 @@ impl PCloudClient {
     }
 
     /// Returns the download link for a file. Accepts either a file id (u64), a file path (String) or any other pCloud object describing a file (like Metadata)
-    pub async fn get_download_link_for_file<'a, T: TryInto<PCloudFile>>(
+    pub fn get_download_link_for_file<'a, T: TryInto<PCloudFile>>(
         &self,
         file_like: T,
-    ) -> Result<pcloud_model::DownloadLink, Box<dyn 'a + std::error::Error>>
+    ) -> Result<FileDownloadRequestBuilder, Box<dyn 'a + std::error::Error>>
     where
         T::Error: 'a + std::error::Error,
     {
-        FileDownloadRequestBuilder::for_file(self, file_like)?
-            .get()
-            .await
+        FileDownloadRequestBuilder::for_file(self, file_like)
     }
 
     /// Get user info
@@ -519,7 +528,7 @@ impl PCloudClient {
         }
     }
 
-    /// Fetches the download link and directly downloads the file.  Accepts either a file id (u64), a file path (String) or any other pCloud object describing a file (like Metadata)
+    /// Fetches the download link for the latest file revision and directly downloads the file.  Accepts either a file id (u64), a file path (String) or any other pCloud object describing a file (like Metadata)
     pub async fn download_file<'a, T: TryInto<PCloudFile>>(
         &self,
         file_like: T,
@@ -527,7 +536,7 @@ impl PCloudClient {
     where
         T::Error: 'a + std::error::Error,
     {
-        let link = self.get_download_link_for_file(file_like).await?;
+        let link = self.get_download_link_for_file(file_like)?.get().await?;
         self.download_link(&link).await
     }
 }

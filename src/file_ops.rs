@@ -4,7 +4,7 @@ use crate::{
     folder_ops::PCloudFolder,
     pcloud_client::PCloudClient,
     pcloud_model::{
-        self, FileOrFolderStat, Metadata, PCloudResult, PublicFileLink, UploadedFile,
+        self, FileOrFolderStat, Metadata, PCloudResult, PublicFileLink, RevisionList, UploadedFile,
         WithPCloudResult,
     },
 };
@@ -108,6 +108,8 @@ pub struct CopyFileRequestBuilder {
     mtime: Option<i64>,
     /// if set, file created time is set. It's required to provide mtime to set ctime. Have to be unix time seconds.
     ctime: Option<i64>,
+    /// File revision to fetch
+    revision_id: Option<u64>,
 }
 
 #[allow(dead_code)]
@@ -137,6 +139,7 @@ impl CopyFileRequestBuilder {
                 overwrite: true,
                 mtime: None,
                 ctime: None,
+                revision_id: None,
             })
         } else {
             Err(pcloud_model::PCloudResult::NoFileIdOrPathProvided)?
@@ -172,6 +175,12 @@ impl CopyFileRequestBuilder {
     /// name of the destination file. If omitted, then the original filename is used
     pub fn with_new_name(mut self, value: &str) -> CopyFileRequestBuilder {
         self.to_name = Some(value.to_string());
+        self
+    }
+
+    /// Choose the revision of the file. If not set the latest revision is used.
+    pub fn with_revision(mut self, value: u64) -> CopyFileRequestBuilder {
+        self.revision_id = Some(value);
         self
     }
 
@@ -212,6 +221,10 @@ impl CopyFileRequestBuilder {
             r = r.query(&[("toname", v)]);
         }
 
+        if let Some(v) = self.revision_id {
+            r = r.query(&[("revisionid", v)]);
+        }
+
         if !self.overwrite {
             r = r.query(&[("noover", "1")]);
         }
@@ -241,6 +254,8 @@ pub struct MoveFileRequestBuilder {
     to_folder_id: Option<u64>,
     /// New file name
     to_name: Option<String>,
+    /// File revision to fetch
+    revision_id: Option<u64>,
 }
 
 #[allow(dead_code)]
@@ -267,6 +282,7 @@ impl MoveFileRequestBuilder {
                 to_folder_id: target.folder_id,
                 client: client.clone(),
                 to_name: None,
+                revision_id: None,
             })
         } else {
             Err(pcloud_model::PCloudResult::NoFileIdOrPathProvided)?
@@ -276,6 +292,12 @@ impl MoveFileRequestBuilder {
     /// name of the destination file. If omitted, then the original filename is used
     pub fn with_new_name(mut self, value: &str) -> MoveFileRequestBuilder {
         self.to_name = Some(value.to_string());
+        self
+    }
+
+    /// Choose the revision of the file. If not set the latest revision is used.
+    pub fn with_revision(mut self, value: u64) -> MoveFileRequestBuilder {
+        self.revision_id = Some(value);
         self
     }
 
@@ -306,6 +328,10 @@ impl MoveFileRequestBuilder {
 
         if let Some(v) = self.to_name {
             r = r.query(&[("toname", v)]);
+        }
+
+        if let Some(v) = self.revision_id {
+            r = r.query(&[("revisionid", v)]);
         }
 
         r = self.client.add_token(r);
@@ -474,6 +500,8 @@ pub struct PublicFileLinkRequestBuilder {
     max_traffic: Option<u64>,
     short_link: bool,
     link_password: Option<String>,
+    /// File revision to fetch
+    revision_id: Option<u64>,
 }
 
 #[allow(dead_code)]
@@ -497,6 +525,7 @@ impl PublicFileLinkRequestBuilder {
                 max_traffic: None,
                 short_link: false,
                 link_password: None,
+                revision_id: None,
             })
         } else {
             Err(pcloud_model::PCloudResult::NoFileIdOrPathProvided)?
@@ -537,6 +566,12 @@ impl PublicFileLinkRequestBuilder {
         self
     }
 
+    /// Choose the revision of the file. If not set the latest revision is used.
+    pub fn with_revision(mut self, value: u64) -> PublicFileLinkRequestBuilder {
+        self.revision_id = Some(value);
+        self
+    }
+
     pub async fn get(self) -> Result<PublicFileLink, Box<dyn std::error::Error>> {
         let mut r = self
             .client
@@ -571,6 +606,10 @@ impl PublicFileLinkRequestBuilder {
 
         if let Some(v) = self.expire {
             r = r.query(&[("expire", v)]);
+        }
+
+        if let Some(v) = self.revision_id {
+            r = r.query(&[("revisionid", v)]);
         }
 
         r = self.client.add_token(r);
@@ -646,13 +685,69 @@ impl PublicFileDownloadRequestBuilder {
     }
 }
 
-pub(crate) struct ChecksumFileRequestBuilder {
+pub struct ListRevisionsRequestBuilder {
     /// Client to actually perform the request
     client: PCloudClient,
     ///  ID of the  file
     file_id: Option<u64>,
     /// Path to the  file
     path: Option<String>,
+}
+
+impl ListRevisionsRequestBuilder {
+    pub(crate) fn for_file<'a, T: TryInto<PCloudFile>>(
+        client: &PCloudClient,
+        file_like: T,
+    ) -> Result<ListRevisionsRequestBuilder, Box<dyn 'a + std::error::Error>>
+    where
+        T::Error: 'a + std::error::Error,
+    {
+        let f = file_like.try_into()?;
+
+        if f.file_id.is_some() || f.path.is_some() {
+            Ok(ListRevisionsRequestBuilder {
+                file_id: f.file_id,
+                path: f.path,
+                client: client.clone(),
+            })
+        } else {
+            Err(pcloud_model::PCloudResult::NoFileIdOrPathProvided)?
+        }
+    }
+
+    /// Executes the request
+    pub async fn get(self) -> Result<RevisionList, Box<dyn std::error::Error>> {
+        let mut r = self
+            .client
+            .client
+            .get(format!("{}/listrevisions", self.client.api_host));
+
+        if let Some(id) = self.file_id {
+            debug!("Requesting file revisions for file {}", id);
+            r = r.query(&[("fileid", id)]);
+        }
+
+        if let Some(p) = self.path {
+            debug!("Requesting file revisions for file {}", p);
+            r = r.query(&[("path", p)]);
+        }
+
+        r = self.client.add_token(r);
+
+        let result = r.send().await?.json::<RevisionList>().await?.assert_ok()?;
+        Ok(result)
+    }
+}
+
+pub struct ChecksumFileRequestBuilder {
+    /// Client to actually perform the request
+    client: PCloudClient,
+    ///  ID of the  file
+    file_id: Option<u64>,
+    /// Path to the  file
+    path: Option<String>,
+    /// File revision to fetch
+    revision_id: Option<u64>,
 }
 
 #[allow(dead_code)]
@@ -671,12 +766,20 @@ impl ChecksumFileRequestBuilder {
                 file_id: f.file_id,
                 path: f.path,
                 client: client.clone(),
+                revision_id: None,
             })
         } else {
             Err(pcloud_model::PCloudResult::NoFileIdOrPathProvided)?
         }
     }
 
+    /// Choose the revision of the file. If not set the latest revision is used.
+    pub fn with_revision(mut self, value: u64) -> ChecksumFileRequestBuilder {
+        self.revision_id = Some(value);
+        self
+    }
+
+    /// Executes the request
     pub async fn get(self) -> Result<pcloud_model::FileChecksums, Box<dyn std::error::Error>> {
         let mut r = self
             .client
@@ -691,6 +794,10 @@ impl ChecksumFileRequestBuilder {
         if let Some(p) = self.path {
             debug!("Requesting file checksums for file {}", p);
             r = r.query(&[("path", p)]);
+        }
+
+        if let Some(v) = self.revision_id {
+            r = r.query(&[("revisionid", v)]);
         }
 
         r = self.client.add_token(r);
@@ -766,13 +873,15 @@ impl FileDeleteRequestBuilder {
     }
 }
 
-pub(crate) struct FileDownloadRequestBuilder {
+pub struct FileDownloadRequestBuilder {
     /// Client to actually perform the request
     client: PCloudClient,
     ///  ID of the  file
     file_id: Option<u64>,
     /// Path to the  file
     path: Option<String>,
+    /// File revision to fetch
+    revision_id: Option<u64>,
 }
 
 #[allow(dead_code)]
@@ -791,12 +900,20 @@ impl FileDownloadRequestBuilder {
                 file_id: f.file_id,
                 path: f.path,
                 client: client.clone(),
+                revision_id: None,
             })
         } else {
             Err(pcloud_model::PCloudResult::NoFileIdOrPathProvided)?
         }
     }
 
+    /// Choose the revision of the file. If not set the latest revision is used.
+    pub fn with_revision(mut self, value: u64) -> FileDownloadRequestBuilder {
+        self.revision_id = Some(value);
+        self
+    }
+
+    /// Fetch the download link for the file
     pub async fn get(self) -> Result<pcloud_model::DownloadLink, Box<dyn std::error::Error>> {
         let mut r = self
             .client
@@ -813,6 +930,10 @@ impl FileDownloadRequestBuilder {
             r = r.query(&[("path", p)]);
         }
 
+        if let Some(v) = self.revision_id {
+            r = r.query(&[("revisionid", v)]);
+        }
+
         r = self.client.add_token(r);
 
         let diff = r
@@ -824,13 +945,16 @@ impl FileDownloadRequestBuilder {
         Ok(diff)
     }
 }
-pub(crate) struct FileStatRequestBuilder {
+
+pub struct FileStatRequestBuilder {
     /// Client to actually perform the request
     client: PCloudClient,
     ///  ID of the  file
     file_id: Option<u64>,
     /// Path to the  file
     path: Option<String>,
+    /// File revision to fetch
+    revision_id: Option<u64>,
 }
 
 #[allow(dead_code)]
@@ -849,12 +973,20 @@ impl FileStatRequestBuilder {
                 file_id: f.file_id,
                 path: f.path,
                 client: client.clone(),
+                revision_id: None,
             })
         } else {
             Err(pcloud_model::PCloudResult::NoFileIdOrPathProvided)?
         }
     }
 
+    /// Choose the revision of the file. If not set the latest revision is used.
+    pub fn with_revision(mut self, value: u64) -> FileStatRequestBuilder {
+        self.revision_id = Some(value);
+        self
+    }
+
+    /// Fetch the file metadata
     pub async fn get(self) -> Result<pcloud_model::FileOrFolderStat, Box<dyn std::error::Error>> {
         let mut r = self
             .client
@@ -869,6 +1001,10 @@ impl FileStatRequestBuilder {
         if let Some(p) = self.path {
             debug!("Requesting file metadata for file {}", p);
             r = r.query(&[("path", p)]);
+        }
+
+        if let Some(v) = self.revision_id {
+            r = r.query(&[("revisionid", v)]);
         }
 
         r = self.client.add_token(r);
