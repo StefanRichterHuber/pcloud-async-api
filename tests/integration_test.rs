@@ -1,6 +1,7 @@
 use chrono::DateTime;
 use log::info;
 use pcloud_async_api::{self, pcloud_model::PCloudResult};
+use tokio::time::{sleep, Duration};
 use uuid::Uuid;
 
 async fn get_client(
@@ -18,9 +19,67 @@ async fn get_client(
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_file_operations() -> Result<(), Box<dyn std::error::Error>> {
-    env_logger::init();
+async fn test_revision() -> Result<(), Box<dyn std::error::Error>> {
+    let folder_name = Uuid::new_v4().to_string();
 
+    let pcloud = get_client().await?;
+
+    // Create test folder
+    let createfolder_result = pcloud.create_folder("/", &folder_name)?.execute().await?;
+
+    assert_eq!(PCloudResult::Ok, createfolder_result.result);
+    assert_eq!(
+        folder_name,
+        createfolder_result.metadata.as_ref().unwrap().name
+    );
+    info!("Created test folder {}", folder_name);
+
+    // Upload file content
+    let upload_result = pcloud
+        .upload_file_into_folder(format!("/{}", folder_name))?
+        .with_file("test.txt", "This is nice test content")
+        .upload()
+        .await?;
+
+    assert_eq!(PCloudResult::Ok, upload_result.result);
+    assert_eq!("test.txt", upload_result.metadata.get(0).unwrap().name);
+    sleep(Duration::from_millis(200)).await;
+
+    // Overwrite file content
+    let upload_result1 = pcloud
+        .upload_file_into_folder(format!("/{}", folder_name))?
+        .with_file(
+            "test.txt",
+            "This is nice test content: We are experts in that!",
+        )
+        .upload()
+        .await?;
+
+    assert_eq!(PCloudResult::Ok, upload_result1.result);
+    assert_eq!("test.txt", upload_result1.metadata.get(0).unwrap().name);
+    sleep(Duration::from_millis(200)).await;
+
+    // Check file rev
+    let file_rev = pcloud
+        .list_file_revisions(format!("/{}/{}", folder_name, "test.txt"))
+        .await?;
+
+    assert_eq!(PCloudResult::Ok, file_rev.result);
+    assert_eq!(1, file_rev.revisions.len());
+
+    // Delete test folder
+    let deletefolder_result = pcloud
+        .delete_folder(&createfolder_result.metadata.unwrap())?
+        .delete_recursive()
+        .await?;
+    assert_eq!(PCloudResult::Ok, deletefolder_result.result);
+    info!("Deleted folder {}", folder_name);
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_file_operations() -> Result<(), Box<dyn std::error::Error>> {
     let folder_name = Uuid::new_v4().to_string();
 
     let pcloud = get_client().await?;
