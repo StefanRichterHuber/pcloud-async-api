@@ -1,7 +1,6 @@
 use chrono::DateTime;
 use log::info;
 use pcloud_async_api::{self, pcloud_model::PCloudResult};
-use tokio::time::{sleep, Duration};
 use uuid::Uuid;
 
 async fn get_client(
@@ -19,7 +18,7 @@ async fn get_client(
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_revision() -> Result<(), Box<dyn std::error::Error>> {
+async fn test_file_revisions() -> Result<(), Box<dyn std::error::Error>> {
     let folder_name = Uuid::new_v4().to_string();
 
     let pcloud = get_client().await?;
@@ -43,7 +42,6 @@ async fn test_revision() -> Result<(), Box<dyn std::error::Error>> {
 
     assert_eq!(PCloudResult::Ok, upload_result.result);
     assert_eq!("test.txt", upload_result.metadata.get(0).unwrap().name);
-    sleep(Duration::from_millis(200)).await;
 
     // Overwrite file content
     let upload_result1 = pcloud
@@ -57,7 +55,6 @@ async fn test_revision() -> Result<(), Box<dyn std::error::Error>> {
 
     assert_eq!(PCloudResult::Ok, upload_result1.result);
     assert_eq!("test.txt", upload_result1.metadata.get(0).unwrap().name);
-    sleep(Duration::from_millis(200)).await;
 
     // Check file rev
     let file_rev = pcloud
@@ -66,6 +63,15 @@ async fn test_revision() -> Result<(), Box<dyn std::error::Error>> {
 
     assert_eq!(PCloudResult::Ok, file_rev.result);
     assert_eq!(1, file_rev.revisions.len());
+
+    // Download old rev
+    let link = pcloud
+        .get_download_link_for_file(format!("/{}/{}", folder_name, "test.txt"))?
+        .with_revision(file_rev.revisions.get(0).unwrap().revisionid)
+        .get()
+        .await?;
+    let old_content = pcloud.download_link(&link).await?.text().await?;
+    assert_eq!("This is nice test content", old_content);
 
     // Delete test folder
     let deletefolder_result = pcloud
