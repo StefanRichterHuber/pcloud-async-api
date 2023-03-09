@@ -5,7 +5,7 @@ use crate::pcloud_model::{
     UploadedFile, UserInfo, WithPCloudResult,
 };
 use chrono::{DateTime, TimeZone};
-use log::{debug, error, info, log_enabled, warn, Level};
+use log::{debug, warn};
 use reqwest::{Body, Client, RequestBuilder, Response};
 
 /// Generic description of a PCloud File. Either by its file id (preferred) or by its path
@@ -22,6 +22,16 @@ impl Into<PCloudFile> for &str {
         PCloudFile {
             file_id: None,
             path: Some(self.to_string()),
+        }
+    }
+}
+
+/// Convert Strings into pCloud file paths
+impl Into<PCloudFile> for String {
+    fn into(self) -> PCloudFile {
+        PCloudFile {
+            file_id: None,
+            path: Some(self),
         }
     }
 }
@@ -99,6 +109,29 @@ impl TryInto<PCloudFolder> for &str {
             Ok(PCloudFolder {
                 folder_id: None,
                 path: Some(self.to_string()),
+            })
+        } else {
+            Err(PCloudResult::InvalidPath)?
+        }
+    }
+}
+
+/// Convert Strings into pCloud folder paths
+impl TryInto<PCloudFolder> for String {
+    type Error = PCloudResult;
+
+    fn try_into(self) -> Result<PCloudFolder, PCloudResult> {
+        if self == "/" {
+            // Root folder has always id 0
+            Ok(PCloudFolder {
+                folder_id: Some(0),
+                path: None,
+            })
+        } else if self.starts_with("/") {
+            // File paths must always be absolute paths
+            Ok(PCloudFolder {
+                folder_id: None,
+                path: Some(self),
             })
         } else {
             Err(PCloudResult::InvalidPath)?
@@ -1920,6 +1953,7 @@ impl PCloudClient {
 
         r = self.add_token(r);
 
+        debug!("Requesting user info");
         let userinfo = r.send().await?.json::<UserInfo>().await?.assert_ok()?;
 
         Ok(userinfo)
@@ -1933,6 +1967,12 @@ impl PCloudClient {
         if link.hosts.len() > 0 && link.path.is_some() {
             let url = format!(
                 "https://{}{}",
+                link.hosts.get(0).unwrap(),
+                link.path.as_ref().unwrap()
+            );
+
+            debug!(
+                "Downloading file link https://{}{}",
                 link.hosts.get(0).unwrap(),
                 link.path.as_ref().unwrap()
             );
