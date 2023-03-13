@@ -96,7 +96,7 @@ impl DiffRequestBuilder {
         self
     }
 
-    /// if provided, no more than limit entries will be returned
+    /// if provided, no more than limit entries will be returned. If not provided ~100 entries are returned.
     pub fn limit(mut self, value: u64) -> DiffRequestBuilder {
         self.limit = Some(value);
         self
@@ -116,10 +116,11 @@ impl DiffRequestBuilder {
                 for entry in diffs.entries.into_iter() {
                     if let Some(old_diff_id) = diff_id {
                         if entry.diffid > old_diff_id {
-                            debug!("    Received event {} -> {:?}", entry.diffid, entry.event);
+                            debug!("Received event {} -> {:?}", entry.diffid, entry.event);
                             tx.send(entry).await?;
                         }
                     } else {
+                        debug!("Received event {} -> {:?}", entry.diffid, entry.event);
                         tx.send(entry).await?;
                     }
                 }
@@ -182,7 +183,7 @@ impl DiffRequestBuilder {
         rx
     }
 
-    /// Fetches the events
+    /// Fetches the events. No matter you configure the limit, not all events could be fetched at once. Therefore one has to call repeatedly with the diffid of the last result set in the next call.
     pub async fn get(self) -> Result<Diff, Box<dyn std::error::Error>> {
         let url = format!("{}/diff", self.client.api_host);
         let mut r = self.client.client.get(url);
