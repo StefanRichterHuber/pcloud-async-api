@@ -199,7 +199,7 @@ impl PCloudClient {
         })
     }
 
-    /// Creates a new PCloudClient instance using username and password to obtain a temporary auth token. Token is revoked on drop of this instance.
+    /// Creates a new PCloudClient instance using username and password to obtain a temporary auth token. Token is shared between all clones of this instance and revoked when the last instance is dropped. Automatically determines nearest API server for best performance.
     pub async fn with_username_and_password(
         host: &str,
         username: &str,
