@@ -1,6 +1,7 @@
 use chrono::DateTime;
 use log::info;
 use pcloud_async_api::{self, pcloud_model::PCloudResult};
+use tokio::time::{sleep, Duration};
 use uuid::Uuid;
 
 async fn get_client(
@@ -56,6 +57,8 @@ async fn test_file_revisions() -> Result<(), Box<dyn std::error::Error>> {
     assert_eq!(PCloudResult::Ok, upload_result1.result);
     assert_eq!("test.txt", upload_result1.metadata.get(0).unwrap().name);
 
+    sleep(Duration::from_millis(200)).await;
+
     // Check file rev
     let file_rev = pcloud
         .list_file_revisions(format!("/{}/{}", folder_name, "test.txt"))
@@ -91,7 +94,7 @@ async fn test_file_operations() -> Result<(), Box<dyn std::error::Error>> {
     let pcloud = get_client().await?;
 
     let date =
-        DateTime::parse_from_str("2023 Jan 25 12:09:14.274 +0000", "%Y %b %d %H:%M:%S%.3f %z")
+        DateTime::parse_from_str("2023 Jan 25 12:09:14.000 +0000", "%Y %b %d %H:%M:%S%.3f %z")
             .unwrap();
 
     // Create test folder
@@ -122,9 +125,8 @@ async fn test_file_operations() -> Result<(), Box<dyn std::error::Error>> {
         "second test.txt",
         upload_result.metadata.get(1).unwrap().name
     );
-    // Does not work because of small rounding errors
-    //assert_eq!(date, upload_result.metadata.get(0).unwrap().modified);
-    //assert_eq!(date, upload_result.metadata.get(1).unwrap().modified);
+    assert_eq!(date, upload_result.metadata.get(0).unwrap().modified);
+    assert_eq!(date, upload_result.metadata.get(1).unwrap().modified);
     info!("Created test files: {:?}", upload_result.fileids);
 
     let file_id = upload_result.fileids.get(0).unwrap();
