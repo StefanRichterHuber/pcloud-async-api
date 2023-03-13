@@ -1,5 +1,4 @@
-use std::fmt::Display;
-
+use crate::events::DiffRequestBuilder;
 use crate::file_ops::ChecksumFileRequestBuilder;
 use crate::file_ops::CopyFileRequestBuilder;
 use crate::file_ops::FileDeleteRequestBuilder;
@@ -18,101 +17,9 @@ use crate::folder_ops::ListFolderRequestBuilder;
 use crate::folder_ops::MoveFolderRequestBuilder;
 use crate::folder_ops::PCloudFolder;
 use crate::pcloud_model::RevisionList;
-use crate::pcloud_model::{self, Diff, FileOrFolderStat, PCloudResult, UserInfo, WithPCloudResult};
-use chrono::{DateTime, TimeZone};
+use crate::pcloud_model::{self, FileOrFolderStat, PCloudResult, UserInfo, WithPCloudResult};
 use log::{debug, warn};
 use reqwest::{Client, RequestBuilder, Response};
-
-pub struct DiffRequestBuilder {
-    /// Client to actually perform the request
-    client: PCloudClient,
-    /// receive only changes since that diffid.
-    diff_id: Option<u64>,
-    /// datetime receive only events generated after that time
-    after: Option<String>,
-    /// return last number of events with highest diffids (that is the last events)
-    last: Option<u64>,
-    /// if set, the connection will block until an event arrives. Works only with diffid
-    block: bool,
-    /// if provided, no more than limit entries will be returned
-    limit: Option<u64>,
-}
-
-#[allow(dead_code)]
-impl DiffRequestBuilder {
-    fn create(client: &PCloudClient) -> DiffRequestBuilder {
-        DiffRequestBuilder {
-            diff_id: None,
-            after: None,
-            last: None,
-            block: false,
-            limit: None,
-            client: client.clone(),
-        }
-    }
-
-    /// receive only changes since that diffid.
-    pub fn after_diff_id(mut self, value: u64) -> DiffRequestBuilder {
-        self.diff_id = Some(value);
-        self
-    }
-    /// datetime receive only events generated after that time
-    pub fn after<Tz>(mut self, value: &DateTime<Tz>) -> DiffRequestBuilder
-    where
-        Tz: TimeZone,
-        Tz::Offset: Display,
-    {
-        self.after = Some(pcloud_model::format_date_time_for_pcloud(value));
-        self
-    }
-
-    ///  return last number of events with highest diffids (that is the last events)
-    pub fn only_last(mut self, value: u64) -> DiffRequestBuilder {
-        self.last = Some(value);
-        self
-    }
-
-    /// if set, the connection will block until an event arrives. Works only with diffid
-    pub fn block(mut self, value: bool) -> DiffRequestBuilder {
-        self.block = value;
-        self
-    }
-    /// if provided, no more than limit entries will be returned
-    pub fn limit(mut self, value: u64) -> DiffRequestBuilder {
-        self.limit = Some(value);
-        self
-    }
-
-    pub async fn get(self) -> Result<Diff, Box<dyn std::error::Error>> {
-        let url = format!("{}/diff", self.client.api_host);
-        let mut r = self.client.client.get(url);
-
-        if let Some(v) = self.diff_id {
-            r = r.query(&[("diffid", v)]);
-        }
-
-        if let Some(v) = self.last {
-            r = r.query(&[("last", v)]);
-        }
-
-        if let Some(v) = self.limit {
-            r = r.query(&[("limit", v)]);
-        }
-
-        if self.block {
-            r = r.query(&[("block", "1")]);
-        }
-
-        if let Some(v) = self.after {
-            r = r.query(&[("after", v)]);
-        }
-
-        r = self.client.add_token(r);
-
-        let diff = r.send().await?.json::<pcloud_model::Diff>().await?;
-        Ok(diff)
-    }
-}
 
 #[derive(Clone)]
 pub struct PCloudClient {
@@ -242,11 +149,11 @@ impl PCloudClient {
         r = r.query(&[("username", username)]);
         r = r.query(&[("password", password)]);
 
-        let userinfo = r.send().await?.json::<pcloud_model::UserInfo>().await?;
+        let user_info = r.send().await?.json::<pcloud_model::UserInfo>().await?;
 
-        if userinfo.result == PCloudResult::Ok && userinfo.auth.is_some() {
-            debug!("Successfull login for user {}", username);
-            Ok(userinfo.auth.unwrap())
+        if user_info.result == PCloudResult::Ok && user_info.auth.is_some() {
+            debug!("Successful login for user {}", username);
+            Ok(user_info.auth.unwrap())
         } else {
             Err(PCloudResult::AccessDenied)?
         }
@@ -313,7 +220,8 @@ impl PCloudClient {
         Ok(best_host)
     }
 
-    /// List updates of the user's folders/files.
+    /// List events on the users pCloud account.
+    /// see https://docs.pcloud.com/methods/general/diff.html for details
     pub fn diff(&self) -> DiffRequestBuilder {
         DiffRequestBuilder::create(self)
     }
@@ -505,9 +413,9 @@ impl PCloudClient {
         r = self.add_token(r);
 
         debug!("Requesting user info");
-        let userinfo = r.send().await?.json::<UserInfo>().await?.assert_ok()?;
+        let user_info = r.send().await?.json::<UserInfo>().await?.assert_ok()?;
 
-        Ok(userinfo)
+        Ok(user_info)
     }
 
     /// Downloads a DownloadLink

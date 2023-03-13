@@ -1,6 +1,9 @@
 use chrono::DateTime;
 use log::info;
-use pcloud_async_api::{self, pcloud_model::PCloudResult};
+use pcloud_async_api::{
+    self,
+    pcloud_model::{DiffEntry, DiffEvent, PCloudResult},
+};
 use tokio::time::{sleep, Duration};
 use uuid::Uuid;
 
@@ -16,6 +19,99 @@ async fn get_client(
     .await?;
 
     Ok(pcloud)
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn test_event_stream() -> Result<(), Box<dyn std::error::Error>> {
+    // Lets wait some time to avoid previous events to be shown (due to times not in sync between client and server)
+    sleep(Duration::from_millis(5000)).await;
+
+    let now = chrono::offset::Local::now();
+
+    let pcloud = get_client().await?;
+
+    let mut events = pcloud
+        .diff()
+        .limit(32)
+        .after(&now)
+        .block_timeout(Duration::from_secs(1))
+        .stream();
+
+    // Lets wait some time to avoid missed events due to times not in sync between client and server
+    sleep(Duration::from_millis(500)).await;
+
+    let (tx, rx) = tokio::sync::oneshot::channel::<Vec<DiffEntry>>();
+
+    tokio::spawn(async move {
+        let mut result = Vec::default();
+
+        while let Some(event) = events.recv().await {
+            result.push(event);
+            // 4 events: folder created, file created, file deleted, folder deleted
+            if result.len() == 4 {
+                break;
+            }
+        }
+        tx.send(result).unwrap();
+        events.close();
+    });
+
+    let folder_name = Uuid::new_v4().to_string();
+    // Create test folder
+    let createfolder_result = pcloud.create_folder("/", &folder_name)?.execute().await?;
+
+    assert_eq!(PCloudResult::Ok, createfolder_result.result);
+    assert_eq!(
+        folder_name,
+        createfolder_result.metadata.as_ref().unwrap().name
+    );
+    info!("Created test folder {}", folder_name);
+
+    // Upload file content
+    let upload_result = pcloud
+        .upload_file_into_folder(format!("/{}", folder_name))?
+        .with_file("test.txt", "This is nice test content")
+        .upload()
+        .await?;
+
+    assert_eq!(PCloudResult::Ok, upload_result.result);
+    assert_eq!("test.txt", upload_result.metadata.get(0).unwrap().name);
+
+    // Delete test folder
+    let deletefolder_result = pcloud
+        .delete_folder(&createfolder_result.metadata.unwrap())?
+        .delete_recursive()
+        .await?;
+    assert_eq!(PCloudResult::Ok, deletefolder_result.result);
+    info!("Deleted folder {}", folder_name);
+
+    // After closing the receiving event channel on has to wait long enough to run in to a timeout configured previously, otherwise there will be runtime errors droping the connection
+    sleep(Duration::from_millis(2000)).await;
+
+    // Check if the correct events have arrived
+    let result = rx.await?;
+    assert_eq!(DiffEvent::CreateFolder, result.get(0).unwrap().event);
+    assert_eq!(
+        folder_name,
+        result.get(0).unwrap().metadata.as_ref().unwrap().name
+    );
+    assert_eq!(DiffEvent::CreateFile, result.get(1).unwrap().event);
+    assert_eq!(
+        "test.txt",
+        result.get(1).unwrap().metadata.as_ref().unwrap().name
+    );
+    assert_eq!(DiffEvent::DeleteFile, result.get(2).unwrap().event);
+    assert_eq!(
+        "test.txt",
+        result.get(2).unwrap().metadata.as_ref().unwrap().name
+    );
+    assert_eq!(DiffEvent::DeleteFolder, result.get(3).unwrap().event);
+    assert_eq!(
+        folder_name,
+        result.get(3).unwrap().metadata.as_ref().unwrap().name
+    );
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -200,6 +296,8 @@ async fn test_file_operations() -> Result<(), Box<dyn std::error::Error>> {
     let checksum_result = pcloud.checksum_file(file_id)?.get().await?;
     assert_eq!(PCloudResult::Ok, checksum_result.result);
     info!("Fetched checksums");
+
+    sleep(Duration::from_millis(500)).await;
 
     // List folder content
     let folder_content = pcloud
