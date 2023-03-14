@@ -203,7 +203,9 @@ impl PCloudClient {
 
         let mut r = client.get(url);
 
-        r = r.query(&[("auth", session_token)]);
+        if let Some(v) = session_token {
+            r = r.query(&[("auth", v)]);
+        }
 
         let api_servers = r.send().await?.json::<pcloud_model::ApiServers>().await?;
 
