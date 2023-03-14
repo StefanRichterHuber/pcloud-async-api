@@ -4,11 +4,13 @@ use crate::file_ops::CopyFileRequestBuilder;
 use crate::file_ops::FileDeleteRequestBuilder;
 use crate::file_ops::FileDownloadRequestBuilder;
 use crate::file_ops::FileStatRequestBuilder;
+use crate::file_ops::InitiateSavezipRequestBuilder;
 use crate::file_ops::ListRevisionsRequestBuilder;
 use crate::file_ops::MoveFileRequestBuilder;
 use crate::file_ops::PCloudFile;
 use crate::file_ops::PublicFileDownloadRequestBuilder;
 use crate::file_ops::PublicFileLinkRequestBuilder;
+use crate::file_ops::Tree;
 use crate::file_ops::UploadRequestBuilder;
 use crate::folder_ops::CopyFolderRequestBuilder;
 use crate::folder_ops::CreateFolderRequestBuilder;
@@ -446,5 +448,10 @@ impl PCloudClient {
     {
         let link = self.get_download_link_for_file(file_like)?.get().await?;
         self.download_link(&link).await
+    }
+
+    /// Creates a zip file on the remote file system with the content specified by the given Tree
+    pub fn create_zip(&self, tree: Tree) -> InitiateSavezipRequestBuilder {
+        InitiateSavezipRequestBuilder::zip(self, tree)
     }
 }

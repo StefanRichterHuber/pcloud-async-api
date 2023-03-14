@@ -1,16 +1,21 @@
-use std::fmt::Display;
+use std::{fmt::Display, time::Duration};
 
 use crate::{
     folder_ops::PCloudFolder,
     pcloud_client::PCloudClient,
     pcloud_model::{
-        self, FileOrFolderStat, Metadata, PCloudResult, PublicFileLink, RevisionList, UploadedFile,
-        WithPCloudResult,
+        self, FileOrFolderStat, Metadata, PCloudResult, PublicFileLink, RevisionList,
+        SaveZipProgressResponse, UploadedFile, WithPCloudResult,
     },
 };
 use chrono::{DateTime, TimeZone};
-use log::debug;
-use reqwest::Body;
+use log::{debug, warn};
+use reqwest::{Body, RequestBuilder};
+use tokio::{
+    sync::mpsc::{self, Receiver, Sender},
+    time::sleep,
+};
+use uuid::Uuid;
 
 /// Generic description of a PCloud File. Either by its file id (preferred) or by its path
 pub struct PCloudFile {
@@ -86,6 +91,379 @@ impl TryInto<PCloudFile> for &FileOrFolderStat {
         } else {
             Err(PCloudResult::InvalidFileOrFolderName)?
         }
+    }
+}
+
+/// Some methods can work with trees - that is set of files and folders, where folders can have files and subfolders inside them and so on.
+/// see https://docs.pcloud.com/structures/tree.html
+#[derive(Debug)]
+pub struct Tree {
+    /// If set, contents of the folder with the given id will appear as root elements of the three. The folder itself does not appear as a part of the structure.
+    folder_id: Option<u64>,
+    /// If set, defines one or more folders that will appear as folders in the root folder. If multiple folderids are given, they MUST be separated by coma ,.
+    folder_ids: Vec<u64>,
+    /// If set, files with corresponding ids will appear in the root folder of the tree structure. If more than one fileid is provided, they MUST be separated by coma ,.
+    file_ids: Vec<u64>,
+    /// If set, files with corresponding ids will appear in the root folder of the tree structure. If more than one fileid is provided, they MUST be separated by coma ,.
+    exclude_folder_ids: Vec<u64>,
+    /// If set, defines fileids that are not to be included in the tree structure.
+    exclude_file_ids: Vec<u64>,
+}
+
+/// Some methods can work with trees - that is set of files and folders, where folders can have files and subfolders inside them and so on.
+#[allow(dead_code)]
+impl Tree {
+    pub fn create() -> Tree {
+        Tree {
+            folder_id: None,
+            folder_ids: Vec::default(),
+            file_ids: Vec::default(),
+            exclude_folder_ids: Vec::default(),
+            exclude_file_ids: Vec::default(),
+        }
+    }
+
+    /// Adds this tree to a request
+    pub(crate) fn add_to_request(&self, mut r: RequestBuilder) -> RequestBuilder {
+        if let Some(v) = self.folder_id {
+            r = r.query(&[("folderid", v)]);
+        }
+
+        if !self.folder_ids.is_empty() {
+            let v = self
+                .folder_ids
+                .iter()
+                .map(|n| n.to_string())
+                .collect::<Vec<String>>()
+                .join(",");
+            r = r.query(&[("folderids", v)]);
+        }
+
+        if !self.file_ids.is_empty() {
+            let v = self
+                .file_ids
+                .iter()
+                .map(|n| n.to_string())
+                .collect::<Vec<String>>()
+                .join(",");
+            r = r.query(&[("fileids", v)]);
+        }
+
+        if !self.exclude_folder_ids.is_empty() {
+            let v = self
+                .exclude_folder_ids
+                .iter()
+                .map(|n| n.to_string())
+                .collect::<Vec<String>>()
+                .join(",");
+            r = r.query(&[("excludefolderids", v)]);
+        }
+
+        if !self.exclude_file_ids.is_empty() {
+            let v = self
+                .exclude_file_ids
+                .iter()
+                .map(|n| n.to_string())
+                .collect::<Vec<String>>()
+                .join(",");
+            r = r.query(&[("excludefileids", v)]);
+        }
+
+        return r;
+    }
+
+    /// Adds a file or folder from a metadata object
+    pub fn with(self, source: &Metadata) -> Result<Self, Box<dyn std::error::Error>> {
+        if source.isfolder {
+            self.with_folder(source)
+        } else {
+            self.with_file(source)
+        }
+    }
+
+    /// Excludes a file or folder
+    pub fn without(self, source: &Metadata) -> Result<Self, Box<dyn std::error::Error>> {
+        if source.isfolder {
+            self.without_folder(source)
+        } else {
+            self.without_file(source)
+        }
+    }
+
+    /// If set, files with corresponding ids will appear in the root folder of the tree structure.
+    pub fn with_file<'a, T: TryInto<PCloudFile>>(
+        mut self,
+        file_like: T,
+    ) -> Result<Self, Box<dyn 'a + std::error::Error>>
+    where
+        T::Error: 'a + std::error::Error,
+    {
+        let file: PCloudFile = file_like.try_into()?;
+
+        if let Some(file_id) = file.file_id {
+            self.file_ids.push(file_id);
+            Ok(self)
+        } else {
+            Err(PCloudResult::InvalidFileId)?
+        }
+    }
+
+    /// If set, defines fileids that are not to be included in the tree structure.
+    pub fn without_file<'a, T: TryInto<PCloudFile>>(
+        mut self,
+        file_like: T,
+    ) -> Result<Self, Box<dyn 'a + std::error::Error>>
+    where
+        T::Error: 'a + std::error::Error,
+    {
+        let file: PCloudFile = file_like.try_into()?;
+
+        if let Some(file_id) = file.file_id {
+            self.exclude_file_ids.push(file_id);
+            Ok(self)
+        } else {
+            Err(PCloudResult::InvalidFileId)?
+        }
+    }
+
+    /// If set, defines one or more folders that will appear as folders in the root folder.
+    pub fn with_folder<'a, T: TryInto<PCloudFolder>>(
+        mut self,
+        folder_like: T,
+    ) -> Result<Self, Box<dyn 'a + std::error::Error>>
+    where
+        T::Error: 'a + std::error::Error,
+    {
+        let folder: PCloudFolder = folder_like.try_into()?;
+
+        if let Some(folder_id) = folder.folder_id {
+            self.folder_ids.push(folder_id);
+            Ok(self)
+        } else {
+            Err(PCloudResult::InvalidFolderId)?
+        }
+    }
+
+    /// If set, folders with the given id will be removed from the tree structure. This is useful when you want to include a folder in the tree structure with some of it's subfolders excluded.
+    pub fn without_folder<'a, T: TryInto<PCloudFolder>>(
+        mut self,
+        folder_like: T,
+    ) -> Result<Self, Box<dyn 'a + std::error::Error>>
+    where
+        T::Error: 'a + std::error::Error,
+    {
+        let folder: PCloudFolder = folder_like.try_into()?;
+
+        if let Some(folder_id) = folder.folder_id {
+            self.exclude_folder_ids.push(folder_id);
+            Ok(self)
+        } else {
+            Err(PCloudResult::InvalidFolderId)?
+        }
+    }
+
+    /// If set, contents of the folder with the given id will appear as root elements of the three. The folder itself does not appear as a part of the structure.
+    pub fn with_content_of_folder<'a, T: TryInto<PCloudFolder>>(
+        mut self,
+        folder_like: T,
+    ) -> Result<Self, Box<dyn 'a + std::error::Error>>
+    where
+        T::Error: 'a + std::error::Error,
+    {
+        let folder: PCloudFolder = folder_like.try_into()?;
+
+        if let Some(folder_id) = folder.folder_id {
+            self.folder_id = Some(folder_id);
+            Ok(self)
+        } else {
+            Err(PCloudResult::InvalidFolderId)?
+        }
+    }
+}
+
+pub struct SaveZipRequestBuilder {
+    /// Client to actually perform the request
+    client: PCloudClient,
+    /// Tree containing the files / folders to pack
+    tree: Tree,
+    ///  path where to save the zip archive
+    to_path: Option<String>,
+    ///  folder id of the folder, where to save the zip archive
+    to_folder_id: Option<u64>,
+    /// filename of the desired zip archive
+    to_name: Option<String>,
+    /// key to retrieve the progress for the zipping process
+    progress_hash: Option<String>,
+}
+
+pub struct InitiateSavezipRequestBuilder {
+    /// Client to actually perform the request
+    client: PCloudClient,
+    /// Tree containing the files / folders to pack
+    tree: Tree,
+}
+
+#[allow(dead_code)]
+impl InitiateSavezipRequestBuilder {
+    /// Initiates the request
+    pub(crate) fn zip(client: &PCloudClient, tree: Tree) -> InitiateSavezipRequestBuilder {
+        InitiateSavezipRequestBuilder {
+            client: client.clone(),
+            tree: tree,
+        }
+    }
+
+    /// Full path of the zip file to create
+    pub fn to_path(self, path: &str) -> SaveZipRequestBuilder {
+        SaveZipRequestBuilder {
+            client: self.client,
+            tree: self.tree,
+            to_path: Some(path.to_string()),
+            to_folder_id: None,
+            to_name: None,
+            progress_hash: None,
+        }
+    }
+
+    /// Target folder and file name of the target zip file
+    pub fn to_folder<'a, T: TryInto<PCloudFolder>>(
+        self,
+        folder_like: T,
+        file_name: &str,
+    ) -> Result<SaveZipRequestBuilder, Box<dyn 'a + std::error::Error>>
+    where
+        T::Error: 'a + std::error::Error,
+    {
+        let f: PCloudFolder = folder_like.try_into()?;
+
+        Ok(SaveZipRequestBuilder {
+            client: self.client,
+            tree: self.tree,
+            to_path: f.path,
+            to_folder_id: f.folder_id,
+            to_name: Some(file_name.to_string()),
+            progress_hash: None,
+        })
+    }
+}
+
+impl SaveZipRequestBuilder {
+    /// Get the progress in process of zipping file in the user's filesystem.
+    async fn fetch_progress(
+        client: &PCloudClient,
+        progress_hash: &str,
+    ) -> Result<SaveZipProgressResponse, Box<dyn std::error::Error>> {
+        let mut r = client
+            .client
+            .get(format!("{}/savezipprogress", client.api_host));
+
+        r = r.query(&[("progresshash", progress_hash)]);
+
+        r = client.add_token(r);
+
+        let result = r.send().await?.json::<SaveZipProgressResponse>().await?;
+        Ok(result)
+    }
+
+    /// Get the progress in process of zipping file in the user's filesystem and sends it to the given channel
+    async fn fetch_progress_and_send_event(
+        client: &PCloudClient,
+        progress_hash: &str,
+        tx: &Sender<SaveZipProgressResponse>,
+    ) -> Result<u64, Box<dyn std::error::Error>> {
+        let progress = SaveZipRequestBuilder::fetch_progress(client, progress_hash).await?;
+        let remaining = progress.totalfiles - progress.files;
+        tx.send(progress).await?;
+
+        Ok(remaining)
+    }
+
+    ///  Starts creating a zip file in the user's filesystem and notifies the user of the progress
+    pub async fn execute_with_progress_notification(
+        self,
+    ) -> Result<
+        (
+            pcloud_model::FileOrFolderStat,
+            Receiver<SaveZipProgressResponse>,
+        ),
+        Box<dyn std::error::Error>,
+    > {
+        let progress_hash = Uuid::new_v4().to_string();
+        let progress_client = self.client.clone();
+
+        let req = SaveZipRequestBuilder {
+            client: self.client,
+            tree: self.tree,
+            to_path: self.to_path,
+            to_folder_id: self.to_folder_id,
+            to_name: self.to_name,
+            progress_hash: Some(progress_hash.clone()),
+        };
+        let result = req.execute().await?;
+
+        let (tx, rx) = mpsc::channel::<SaveZipProgressResponse>(32);
+
+        tokio::spawn(async move {
+            loop {
+                match SaveZipRequestBuilder::fetch_progress_and_send_event(
+                    &progress_client,
+                    &progress_hash,
+                    &tx,
+                )
+                .await
+                {
+                    Ok(remaining) => {
+                        if remaining == 0 {
+                            break;
+                        }
+                    }
+                    Err(err) => {
+                        warn!("Errors during receiving savezipprogress: {}", err);
+                    }
+                };
+                sleep(Duration::from_millis(1000)).await;
+            }
+        });
+
+        Ok((result, rx))
+    }
+
+    /// Starts creating a zip file in the user's filesystem.
+    pub async fn execute(
+        self,
+    ) -> Result<pcloud_model::FileOrFolderStat, Box<dyn std::error::Error>> {
+        let mut r = self
+            .client
+            .client
+            .get(format!("{}/savezip", self.client.api_host));
+
+        if let Some(v) = self.to_path {
+            r = r.query(&[("topath", v)]);
+        }
+
+        if let Some(v) = self.to_folder_id {
+            r = r.query(&[("tofolderid", v)]);
+        }
+
+        if let Some(v) = self.to_name {
+            r = r.query(&[("toname", v)]);
+        }
+
+        if let Some(v) = self.progress_hash {
+            r = r.query(&[("progresshash", v)]);
+        }
+
+        r = self.tree.add_to_request(r);
+
+        r = self.client.add_token(r);
+
+        let result = r
+            .send()
+            .await?
+            .json::<pcloud_model::FileOrFolderStat>()
+            .await?
+            .assert_ok()?;
+        Ok(result)
     }
 }
 

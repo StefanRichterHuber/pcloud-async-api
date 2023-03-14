@@ -13,6 +13,9 @@ pub enum PCloudResult {
     NoFullPathOrFolderIdProvided = 1002,
     NoFileIdOrPathProvided = 1004,
     DateTimeFormatNotUnderstood = 1013,
+    NoFullToPathOrToNameAndToFolderIdProvided = 1016,
+    InvalidFolderId = 1017,
+    InvalidFileId = 1018,
     ProvidedAtLeastToPathOrToFolderIdOrToName = 1037,
     ProvideURL = 1040,
     LoginFailed = 2000,
@@ -92,6 +95,11 @@ impl Display for PCloudResult {
                 f,
                 "Please provide at least one of 'topath', 'tofolderid' or 'toname'."
             ),
+            PCloudResult::InvalidFileId => write!(f, "Invalid 'fileid' provided."),
+            PCloudResult::InvalidFolderId => write!(f, "Invalid 'folderid' provided."),
+            PCloudResult::NoFullToPathOrToNameAndToFolderIdProvided => {
+                write!(f, "No full topath or toname/tofolderid provided.")
+            }
         }
     }
 }
@@ -616,6 +624,20 @@ impl WithPCloudResult for LogoutResponse {
     fn get_result(&self) -> &PCloudResult {
         &self.result
     }
+}
+
+/// Get the progress in process of zipping file in the user's filesystem.
+/// see https://docs.pcloud.com/methods/archiving/savezipprogress.html
+#[derive(Serialize, Deserialize, Debug)]
+pub struct SaveZipProgressResponse {
+    /// count of the already zipped files.
+    pub files: u64,
+    ///  total count of files to be zipped.
+    pub totalfiles: u64,
+    /// size of the already zipped files.
+    pub bytes: u64,
+    /// total size of the files to be zipped.
+    pub totalbytes: u64,
 }
 
 /// Converts a DateTime for pCloud URLs
