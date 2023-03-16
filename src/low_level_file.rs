@@ -189,6 +189,7 @@ impl PCloudFileOpenRequest {
     }
 }
 
+/// Currently does not work. Most probably because of connection pooling and: A descriptor is only valid for the same connection. If a connection closes, all the files are also closed. You can open the same file in multiple connections.
 pub struct OpenPCloudFile {
     /// Client to actually perform the request
     client: PCloudClient,
