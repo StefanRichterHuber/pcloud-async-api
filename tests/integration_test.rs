@@ -31,7 +31,7 @@ async fn test_event_stream() -> Result<(), Box<dyn std::error::Error>> {
     let pcloud = get_client().await?;
 
     let mut events = pcloud
-        .diff()
+        .get_events()
         .limit(32)
         .after(&now)
         .block_timeout(Duration::from_secs(1))
