@@ -1225,6 +1225,19 @@ impl PCloudClient {
         }
     }
 
+    /// Returns the file id of a PCloudFile. If the file_id is given, just return it. If a path is given, fetch the metadata with the file id.
+    pub(crate) async fn get_file_id(
+        &self,
+        file: PCloudFile,
+    ) -> Result<u64, Box<dyn std::error::Error>> {
+        if let Some(file_id) = file.file_id {
+            Ok(file_id)
+        } else {
+            let metadata = self.get_file_metadata(file).await?;
+            Ok(metadata.metadata.unwrap().fileid.unwrap())
+        }
+    }
+
     /// Fetches the download link for the latest file revision and directly downloads the file.  Accepts either a file id (u64), a file path (String) or any other pCloud object describing a file (like Metadata)
     pub async fn download_file<'a, T: TryInto<PCloudFile>>(
         &self,

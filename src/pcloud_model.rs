@@ -241,6 +241,23 @@ pub struct Diff {
     pub entries: Vec<DiffEntry>,
 }
 
+/// Result of the `getfilehistory` call
+/// @see https://docs.pcloud.com/methods/general/getfilehistory.html
+#[derive(Serialize, Deserialize, Debug)]
+pub struct FileHistory {
+    /// Result of the operation
+    pub result: PCloudResult,
+    /// File history
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub entries: Vec<DiffEntry>,
+}
+
+impl WithPCloudResult for FileHistory {
+    fn get_result(&self) -> &PCloudResult {
+        &self.result
+    }
+}
+
 /// On success in the reply there will be entries array of objects and diffid. Set your current diffid to the provided diffid after you process all events, during processing set your state to the diffid of the event preferably in a single transaction with the event itself.
 #[derive(Serialize, Deserialize, Debug)]
 pub struct DiffEntry {

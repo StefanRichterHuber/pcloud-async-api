@@ -1,9 +1,10 @@
 use std::fmt::Display;
 use std::time::Duration;
 
+use crate::file_ops::PCloudFile;
 use crate::pcloud_client::PCloudClient;
-use crate::pcloud_model::DiffEntry;
-use crate::pcloud_model::{self, Diff};
+use crate::pcloud_model::{self, Diff, WithPCloudResult};
+use crate::pcloud_model::{DiffEntry, FileHistory};
 use chrono::{DateTime, TimeZone};
 use log::{debug, warn};
 use tokio::sync::mpsc;
@@ -30,6 +31,55 @@ where
     });
 
     rx
+}
+
+pub struct GetFileHistoryRequestBuilder {
+    /// Client to actually perform the request
+    client: PCloudClient,
+    /// fileid of a file that history is requested for
+    file: PCloudFile,
+}
+
+impl GetFileHistoryRequestBuilder {
+    /// Creates a GetFileHistoryRequestBuilder instance
+    pub fn create<'a, T: TryInto<PCloudFile>>(
+        client: &PCloudClient,
+        file_like: T,
+    ) -> Result<GetFileHistoryRequestBuilder, Box<dyn 'a + std::error::Error>>
+    where
+        T::Error: 'a + std::error::Error,
+    {
+        let file = file_like.try_into()?;
+
+        let result = GetFileHistoryRequestBuilder {
+            client: client.clone(),
+            file: file,
+        };
+
+        Ok(result)
+    }
+
+    /// returns event history of a file identified by fileid. File might be a deleted one. The output format is the same as of diff method.
+    pub async fn get(self) -> Result<FileHistory, Box<dyn std::error::Error>> {
+        let url = format!("{}/getfilehistory", self.client.api_host);
+        let mut r = self.client.client.get(url);
+
+        // Requires a file_id not a file name
+        let file_id = self.client.get_file_id(self.file).await?;
+
+        r = r.query(&[("fileid", file_id)]);
+
+        r = self.client.add_token(r);
+
+        let result = r
+            .send()
+            .await?
+            .json::<pcloud_model::FileHistory>()
+            .await?
+            .assert_ok()?;
+
+        Ok(result)
+    }
 }
 
 pub struct DiffRequestBuilder {
@@ -227,5 +277,20 @@ impl PCloudClient {
     /// see https://docs.pcloud.com/methods/general/diff.html for details
     pub fn get_events(&self) -> DiffRequestBuilder {
         DiffRequestBuilder::create(self)
+    }
+
+    /// returns event history of a file. File might be a deleted one.
+    pub async fn get_file_history<'a, T: TryInto<PCloudFile>>(
+        &self,
+        file_like: T,
+    ) -> Result<FileHistory, Box<dyn 'a + std::error::Error>>
+    where
+        T::Error: 'a + std::error::Error,
+    {
+        let result = GetFileHistoryRequestBuilder::create(self, file_like)?
+            .get()
+            .await?;
+
+        Ok(result)
     }
 }
