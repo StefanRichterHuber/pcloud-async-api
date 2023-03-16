@@ -609,6 +609,7 @@ impl ListFolderRequestBuilder {
     }
 }
 
+#[allow(dead_code)]
 impl PCloudClient {
     /// Lists the content of a folder. Accepts either a folder id (u64), a folder path (String) or any other pCloud object describing a folder (like Metadata)
     pub fn list_folder<'a, T: TryInto<PCloudFolder>>(
@@ -668,5 +669,30 @@ impl PCloudClient {
         T::Error: 'a + std::error::Error,
     {
         MoveFolderRequestBuilder::move_folder(self, folder_like, target_folder_like)
+    }
+
+    /// Returns the folder id of a PCloudFolder. If the folder_id is given, just return it. If a path is given, fetch the metadata with the folder id.
+    pub(crate) async fn get_folder_id(
+        &self,
+        folder: PCloudFolder,
+    ) -> Result<u64, Box<dyn std::error::Error>> {
+        if let Some(folder_id) = folder.folder_id {
+            Ok(folder_id)
+        } else {
+            let metadata = self
+                .list_folder(folder)?
+                .recursive(false)
+                .nofiles(true)
+                .get()
+                .await?
+                .metadata
+                .unwrap();
+
+            if !metadata.isfolder {
+                Err(PCloudResult::InvalidFolderId)?
+            }
+            let folder_id = metadata.folderid.unwrap();
+            Ok(folder_id)
+        }
     }
 }

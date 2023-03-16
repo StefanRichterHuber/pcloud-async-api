@@ -8,9 +8,7 @@ use crate::{
     file_ops::PCloudFile,
     folder_ops::PCloudFolder,
     pcloud_client::PCloudClient,
-    pcloud_model::{
-        FileCloseResponse, FileOpenResponse, FileWriteResponse, PCloudResult, WithPCloudResult,
-    },
+    pcloud_model::{FileCloseResponse, FileOpenResponse, FileWriteResponse, WithPCloudResult},
 };
 
 impl PCloudClient {
@@ -59,7 +57,7 @@ impl InitiatePCloudFileOpenRequest {
     }
 
     /// Opens the file by its file id
-    pub fn by_file_id<'a, T: TryInto<PCloudFile>>(
+    pub async fn by_file_id<'a, T: TryInto<PCloudFile>>(
         self,
         file_like: T,
     ) -> Result<PCloudFileOpenRequest, Box<dyn 'a + std::error::Error>>
@@ -67,19 +65,16 @@ impl InitiatePCloudFileOpenRequest {
         T::Error: 'a + std::error::Error,
     {
         let file: PCloudFile = file_like.try_into()?;
+        let file_id = self.client.get_file_id(file).await?;
 
-        if file.file_id.is_some() {
-            Ok(PCloudFileOpenRequest {
-                client: self.client,
-                flags: HashSet::default(),
-                path: None,
-                file_id: file.file_id,
-                folder_id: None,
-                name: None,
-            })
-        } else {
-            Err(PCloudResult::InvalidFileId)?
-        }
+        Ok(PCloudFileOpenRequest {
+            client: self.client,
+            flags: HashSet::default(),
+            path: None,
+            file_id: Some(file_id),
+            folder_id: None,
+            name: None,
+        })
     }
 
     /// Full path of the file to create / open
@@ -95,7 +90,7 @@ impl InitiatePCloudFileOpenRequest {
     }
 
     /// Target folder and file name of the target  file
-    pub fn by_file_in_folder<'a, T: TryInto<PCloudFolder>>(
+    pub async fn by_file_in_folder<'a, T: TryInto<PCloudFolder>>(
         self,
         folder_like: T,
         file_name: &str,
@@ -103,20 +98,17 @@ impl InitiatePCloudFileOpenRequest {
     where
         T::Error: 'a + std::error::Error,
     {
-        let f: PCloudFolder = folder_like.try_into()?;
+        let folder: PCloudFolder = folder_like.try_into()?;
+        let folder_id = self.client.get_folder_id(folder).await?;
 
-        if f.folder_id.is_some() {
-            Ok(PCloudFileOpenRequest {
-                client: self.client,
-                flags: HashSet::default(),
-                path: None,
-                file_id: None,
-                folder_id: f.folder_id,
-                name: Some(file_name.to_string()),
-            })
-        } else {
-            Err(PCloudResult::InvalidFolderId)?
-        }
+        Ok(PCloudFileOpenRequest {
+            client: self.client,
+            flags: HashSet::default(),
+            path: None,
+            file_id: None,
+            folder_id: Some(folder_id),
+            name: Some(file_name.to_string()),
+        })
     }
 }
 

@@ -1206,6 +1206,7 @@ impl FileStatRequestBuilder {
     }
 }
 
+#[allow(dead_code)]
 impl PCloudClient {
     /// Downloads a DownloadLink
     pub async fn download_link(
@@ -1233,8 +1234,14 @@ impl PCloudClient {
         if let Some(file_id) = file.file_id {
             Ok(file_id)
         } else {
-            let metadata = self.get_file_metadata(file).await?;
-            Ok(metadata.metadata.unwrap().fileid.unwrap())
+            let metadata = self.get_file_metadata(file).await?.metadata.unwrap();
+
+            if metadata.isfolder {
+                Err(PCloudResult::NoFileIdOrPathProvided)?
+            }
+
+            let file_id = metadata.fileid.unwrap();
+            Ok(file_id)
         }
     }
 
