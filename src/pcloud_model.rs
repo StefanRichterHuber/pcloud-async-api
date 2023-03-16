@@ -12,6 +12,7 @@ pub enum PCloudResult {
     NoFullPathOrNameOrFolderIdProvided = 1001,
     NoFullPathOrFolderIdProvided = 1002,
     NoFileIdOrPathProvided = 1004,
+    InvalidFileDescriptor = 1007,
     DateTimeFormatNotUnderstood = 1013,
     NoFullToPathOrToNameAndToFolderIdProvided = 1016,
     InvalidFolderId = 1017,
@@ -38,6 +39,7 @@ pub enum PCloudResult {
     TooManyLogins = 4000,
     InternalError = 5000,
     InternalUploadError = 5001,
+    WriteError = 5003,
 }
 
 impl Display for PCloudResult {
@@ -100,6 +102,8 @@ impl Display for PCloudResult {
             PCloudResult::NoFullToPathOrToNameAndToFolderIdProvided => {
                 write!(f, "No full topath or toname/tofolderid provided.")
             }
+            PCloudResult::WriteError => write!(f, "Write error. Try reopening the file."),
+            PCloudResult::InvalidFileDescriptor => write!(f, "Invalid or closed file descriptor."),
         }
     }
 }
@@ -621,6 +625,54 @@ pub struct LogoutResponse {
 }
 
 impl WithPCloudResult for LogoutResponse {
+    fn get_result(&self) -> &PCloudResult {
+        &self.result
+    }
+}
+
+/// Result of opening a file
+/// see https://docs.pcloud.com/methods/fileops/file_open.html
+#[derive(Serialize, Deserialize, Debug)]
+pub struct FileOpenResponse {
+    /// Result of the operation, must be Ok for further values to be present
+    pub result: PCloudResult,
+    /// File descriptor
+    pub fd: u64,
+    /// File id
+    pub fileid: u64,
+}
+
+impl WithPCloudResult for FileOpenResponse {
+    fn get_result(&self) -> &PCloudResult {
+        &self.result
+    }
+}
+
+/// Result of closing a file
+/// see https://docs.pcloud.com/methods/fileops/file_close.html
+#[derive(Serialize, Deserialize, Debug)]
+pub struct FileCloseResponse {
+    /// Result of the operation, must be Ok for further values to be present
+    pub result: PCloudResult,
+}
+
+impl WithPCloudResult for FileCloseResponse {
+    fn get_result(&self) -> &PCloudResult {
+        &self.result
+    }
+}
+
+/// Result of writing a file
+/// see https://docs.pcloud.com/methods/fileops/file_write.html
+#[derive(Serialize, Deserialize, Debug)]
+pub struct FileWriteResponse {
+    /// Result of the operation, must be Ok for further values to be present
+    pub result: PCloudResult,
+    /// number of bytes written
+    pub bytes: Option<u64>,
+}
+
+impl WithPCloudResult for FileWriteResponse {
     fn get_result(&self) -> &PCloudResult {
         &self.result
     }

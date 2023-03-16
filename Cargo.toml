@@ -3,6 +3,12 @@ name = "pcloud-async-api"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+# Currently does not work, gives errors on file descriptor
+low_level_file_ops = []
+# Gives access denied errors :/
+remote_zip = []
+
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]

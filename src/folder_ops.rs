@@ -608,3 +608,65 @@ impl ListFolderRequestBuilder {
         Ok(stat)
     }
 }
+
+impl PCloudClient {
+    /// Lists the content of a folder. Accepts either a folder id (u64), a folder path (String) or any other pCloud object describing a folder (like Metadata)
+    pub fn list_folder<'a, T: TryInto<PCloudFolder>>(
+        &self,
+        folder_like: T,
+    ) -> Result<ListFolderRequestBuilder, Box<dyn 'a + std::error::Error>>
+    where
+        T::Error: 'a + std::error::Error,
+    {
+        ListFolderRequestBuilder::for_folder(self, folder_like)
+    }
+
+    /// Creates a new folder in a parent folder. Accepts either a folder id (u64), a folder path (String) or any other pCloud object describing a folder (like Metadata)
+    pub fn create_folder<'a, T: TryInto<PCloudFolder>>(
+        &self,
+        parent_folder_like: T,
+        name: &str,
+    ) -> Result<CreateFolderRequestBuilder, Box<dyn 'a + std::error::Error>>
+    where
+        T::Error: 'a + std::error::Error,
+    {
+        CreateFolderRequestBuilder::for_folder(self, parent_folder_like, name)
+    }
+
+    /// Deletes a folder. Either only if empty or recursively. Accepts either a folder id (u64), a folder path (String) or any other pCloud object describing a folder (like Metadata)
+    pub fn delete_folder<'a, T: TryInto<PCloudFolder>>(
+        &self,
+        folder_like: T,
+    ) -> Result<DeleteFolderRequestBuilder, Box<dyn 'a + std::error::Error>>
+    where
+        T::Error: 'a + std::error::Error,
+    {
+        DeleteFolderRequestBuilder::for_folder(self, folder_like)
+    }
+
+    /// Copies a folder identified by folderid or path to either topath or tofolderid.
+    pub fn copy_folder<'a, S: TryInto<PCloudFolder>, T: TryInto<PCloudFolder>>(
+        &self,
+        folder_like: S,
+        target_folder_like: T,
+    ) -> Result<CopyFolderRequestBuilder, Box<dyn 'a + std::error::Error>>
+    where
+        S::Error: 'a + std::error::Error,
+        T::Error: 'a + std::error::Error,
+    {
+        CopyFolderRequestBuilder::copy_folder(self, folder_like, target_folder_like)
+    }
+
+    /// Renames (and/or moves) a folder identified by folderid or path to either topath (if topath is a existing folder to place source folder without new name for the folder it MUST end with slash - /newpath/) or tofolderid/toname (one or both can be provided).
+    pub fn move_folder<'a, S: TryInto<PCloudFolder>, T: TryInto<PCloudFolder>>(
+        &self,
+        folder_like: S,
+        target_folder_like: T,
+    ) -> Result<MoveFolderRequestBuilder, Box<dyn 'a + std::error::Error>>
+    where
+        S::Error: 'a + std::error::Error,
+        T::Error: 'a + std::error::Error,
+    {
+        MoveFolderRequestBuilder::move_folder(self, folder_like, target_folder_like)
+    }
+}

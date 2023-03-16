@@ -1,28 +1,23 @@
-use std::{fmt::Display, time::Duration};
+use std::fmt::Display;
 
 use crate::{
     folder_ops::PCloudFolder,
     pcloud_client::PCloudClient,
     pcloud_model::{
-        self, FileOrFolderStat, Metadata, PCloudResult, PublicFileLink, RevisionList,
-        SaveZipProgressResponse, UploadedFile, WithPCloudResult,
+        self, FileOrFolderStat, Metadata, PCloudResult, PublicFileLink, RevisionList, UploadedFile,
+        WithPCloudResult,
     },
 };
 use chrono::{DateTime, TimeZone};
-use log::{debug, warn};
-use reqwest::{Body, RequestBuilder};
-use tokio::{
-    sync::mpsc::{self, Receiver, Sender},
-    time::sleep,
-};
-use uuid::Uuid;
+use log::debug;
+use reqwest::{Body, RequestBuilder, Response};
 
 /// Generic description of a PCloud File. Either by its file id (preferred) or by its path
 pub struct PCloudFile {
     /// ID of the target file
-    file_id: Option<u64>,
+    pub(crate) file_id: Option<u64>,
     /// Path of the target file
-    path: Option<String>,
+    pub(crate) path: Option<String>,
 }
 
 /// Convert Strings into pCloud file paths
@@ -278,192 +273,6 @@ impl Tree {
         } else {
             Err(PCloudResult::InvalidFolderId)?
         }
-    }
-}
-
-pub struct SaveZipRequestBuilder {
-    /// Client to actually perform the request
-    client: PCloudClient,
-    /// Tree containing the files / folders to pack
-    tree: Tree,
-    ///  path where to save the zip archive
-    to_path: Option<String>,
-    ///  folder id of the folder, where to save the zip archive
-    to_folder_id: Option<u64>,
-    /// filename of the desired zip archive
-    to_name: Option<String>,
-    /// key to retrieve the progress for the zipping process
-    progress_hash: Option<String>,
-}
-
-pub struct InitiateSavezipRequestBuilder {
-    /// Client to actually perform the request
-    client: PCloudClient,
-    /// Tree containing the files / folders to pack
-    tree: Tree,
-}
-
-#[allow(dead_code)]
-impl InitiateSavezipRequestBuilder {
-    /// Initiates the request
-    pub(crate) fn zip(client: &PCloudClient, tree: Tree) -> InitiateSavezipRequestBuilder {
-        InitiateSavezipRequestBuilder {
-            client: client.clone(),
-            tree: tree,
-        }
-    }
-
-    /// Full path of the zip file to create
-    pub fn to_path(self, path: &str) -> SaveZipRequestBuilder {
-        SaveZipRequestBuilder {
-            client: self.client,
-            tree: self.tree,
-            to_path: Some(path.to_string()),
-            to_folder_id: None,
-            to_name: None,
-            progress_hash: None,
-        }
-    }
-
-    /// Target folder and file name of the target zip file
-    pub fn to_folder<'a, T: TryInto<PCloudFolder>>(
-        self,
-        folder_like: T,
-        file_name: &str,
-    ) -> Result<SaveZipRequestBuilder, Box<dyn 'a + std::error::Error>>
-    where
-        T::Error: 'a + std::error::Error,
-    {
-        let f: PCloudFolder = folder_like.try_into()?;
-
-        Ok(SaveZipRequestBuilder {
-            client: self.client,
-            tree: self.tree,
-            to_path: f.path,
-            to_folder_id: f.folder_id,
-            to_name: Some(file_name.to_string()),
-            progress_hash: None,
-        })
-    }
-}
-
-impl SaveZipRequestBuilder {
-    /// Get the progress in process of zipping file in the user's filesystem.
-    async fn fetch_progress(
-        client: &PCloudClient,
-        progress_hash: &str,
-    ) -> Result<SaveZipProgressResponse, Box<dyn std::error::Error>> {
-        let mut r = client
-            .client
-            .get(format!("{}/savezipprogress", client.api_host));
-
-        r = r.query(&[("progresshash", progress_hash)]);
-
-        r = client.add_token(r);
-
-        let result = r.send().await?.json::<SaveZipProgressResponse>().await?;
-        Ok(result)
-    }
-
-    /// Get the progress in process of zipping file in the user's filesystem and sends it to the given channel
-    async fn fetch_progress_and_send_event(
-        client: &PCloudClient,
-        progress_hash: &str,
-        tx: &Sender<SaveZipProgressResponse>,
-    ) -> Result<u64, Box<dyn std::error::Error>> {
-        let progress = SaveZipRequestBuilder::fetch_progress(client, progress_hash).await?;
-        let remaining = progress.totalfiles - progress.files;
-        tx.send(progress).await?;
-
-        Ok(remaining)
-    }
-
-    ///  Starts creating a zip file in the user's filesystem and notifies the user of the progress
-    pub async fn execute_with_progress_notification(
-        self,
-    ) -> Result<
-        (
-            pcloud_model::FileOrFolderStat,
-            Receiver<SaveZipProgressResponse>,
-        ),
-        Box<dyn std::error::Error>,
-    > {
-        let progress_hash = Uuid::new_v4().to_string();
-        let progress_client = self.client.clone();
-
-        let req = SaveZipRequestBuilder {
-            client: self.client,
-            tree: self.tree,
-            to_path: self.to_path,
-            to_folder_id: self.to_folder_id,
-            to_name: self.to_name,
-            progress_hash: Some(progress_hash.clone()),
-        };
-        let result = req.execute().await?;
-
-        let (tx, rx) = mpsc::channel::<SaveZipProgressResponse>(32);
-
-        tokio::spawn(async move {
-            loop {
-                match SaveZipRequestBuilder::fetch_progress_and_send_event(
-                    &progress_client,
-                    &progress_hash,
-                    &tx,
-                )
-                .await
-                {
-                    Ok(remaining) => {
-                        if remaining == 0 {
-                            break;
-                        }
-                    }
-                    Err(err) => {
-                        warn!("Errors during receiving savezipprogress: {}", err);
-                    }
-                };
-                sleep(Duration::from_millis(1000)).await;
-            }
-        });
-
-        Ok((result, rx))
-    }
-
-    /// Starts creating a zip file in the user's filesystem.
-    pub async fn execute(
-        self,
-    ) -> Result<pcloud_model::FileOrFolderStat, Box<dyn std::error::Error>> {
-        let mut r = self
-            .client
-            .client
-            .get(format!("{}/savezip", self.client.api_host));
-
-        if let Some(v) = self.to_path {
-            r = r.query(&[("topath", v)]);
-        }
-
-        if let Some(v) = self.to_folder_id {
-            r = r.query(&[("tofolderid", v)]);
-        }
-
-        if let Some(v) = self.to_name {
-            r = r.query(&[("toname", v)]);
-        }
-
-        if let Some(v) = self.progress_hash {
-            r = r.query(&[("progresshash", v)]);
-        }
-
-        r = self.tree.add_to_request(r);
-
-        r = self.client.add_token(r);
-
-        let result = r
-            .send()
-            .await?
-            .json::<pcloud_model::FileOrFolderStat>()
-            .await?
-            .assert_ok()?;
-        Ok(result)
     }
 }
 
@@ -1394,5 +1203,156 @@ impl FileStatRequestBuilder {
             .await?
             .assert_ok()?;
         Ok(diff)
+    }
+}
+
+impl PCloudClient {
+    /// Downloads a DownloadLink
+    pub async fn download_link(
+        &self,
+        link: &pcloud_model::DownloadLink,
+    ) -> Result<Response, Box<dyn std::error::Error>> {
+        if let Some(url) = link.into_url() {
+            debug!("Downloading file link {}", url);
+
+            // No authentication necessary!
+            // r = self.add_token(r);
+            let resp = self.client.get(url).send().await?;
+
+            Ok(resp)
+        } else {
+            Err(PCloudResult::ProvideURL)?
+        }
+    }
+
+    /// Fetches the download link for the latest file revision and directly downloads the file.  Accepts either a file id (u64), a file path (String) or any other pCloud object describing a file (like Metadata)
+    pub async fn download_file<'a, T: TryInto<PCloudFile>>(
+        &self,
+        file_like: T,
+    ) -> Result<Response, Box<dyn 'a + std::error::Error>>
+    where
+        T::Error: 'a + std::error::Error,
+    {
+        let link = self.get_download_link_for_file(file_like)?.get().await?;
+        self.download_link(&link).await
+    }
+
+    /// Copies the given file to the given folder. Either set a target folder id and then the target with with_new_name or give a full new file path as target path
+    pub fn copy_file<'a, S: TryInto<PCloudFile>, T: TryInto<PCloudFolder>>(
+        &self,
+        file_like: S,
+        target_folder_like: T,
+    ) -> Result<CopyFileRequestBuilder, Box<dyn 'a + std::error::Error>>
+    where
+        S::Error: 'a + std::error::Error,
+        T::Error: 'a + std::error::Error,
+    {
+        CopyFileRequestBuilder::copy_file(self, file_like, target_folder_like)
+    }
+
+    /// Moves the given file to the given folder. Either set a target folder id and then the target with with_new_name or give a full new file path as target path
+    pub fn move_file<'a, S: TryInto<PCloudFile>, T: TryInto<PCloudFolder>>(
+        &self,
+        file_like: S,
+        target_folder_like: T,
+    ) -> Result<MoveFileRequestBuilder, Box<dyn 'a + std::error::Error>>
+    where
+        S::Error: 'a + std::error::Error,
+        T::Error: 'a + std::error::Error,
+    {
+        MoveFileRequestBuilder::move_file(self, file_like, target_folder_like)
+    }
+
+    /// Lists revisions for a given fileid / path
+    pub async fn list_file_revisions<'a, S: TryInto<PCloudFile>>(
+        &self,
+        file_like: S,
+    ) -> Result<RevisionList, Box<dyn 'a + std::error::Error>>
+    where
+        S::Error: 'a + std::error::Error,
+    {
+        ListRevisionsRequestBuilder::for_file(self, file_like)?
+            .get()
+            .await
+    }
+
+    /// Returns the metadata of a file. Accepts either a file id (u64), a file path (String) or any other pCloud object describing a file (like Metadata)
+    pub async fn get_file_metadata<'a, T: TryInto<PCloudFile>>(
+        &self,
+        file_like: T,
+    ) -> Result<FileOrFolderStat, Box<dyn 'a + std::error::Error>>
+    where
+        T::Error: 'a + std::error::Error,
+    {
+        FileStatRequestBuilder::for_file(self, file_like)?
+            .get()
+            .await
+    }
+
+    /// Requests deleting a file. Accepts either a file id (u64), a file path (String) or any other pCloud object describing a file (like Metadata)
+    pub async fn delete_file<'a, T: TryInto<PCloudFile>>(
+        &self,
+        file_like: T,
+    ) -> Result<FileOrFolderStat, Box<dyn 'a + std::error::Error>>
+    where
+        T::Error: 'a + std::error::Error,
+    {
+        FileDeleteRequestBuilder::for_file(self, file_like)?
+            .execute()
+            .await
+    }
+
+    /// Requests the checksums of a file. Accepts either a file id (u64), a file path (String) or any other pCloud object describing a file (like Metadata)
+    pub fn checksum_file<'a, T: TryInto<PCloudFile>>(
+        &self,
+        file_like: T,
+    ) -> Result<ChecksumFileRequestBuilder, Box<dyn 'a + std::error::Error>>
+    where
+        T::Error: 'a + std::error::Error,
+    {
+        ChecksumFileRequestBuilder::for_file(self, file_like)
+    }
+
+    /// Returns the public link for a pCloud file. Accepts either a file id (u64), a file path (String) or any other pCloud object describing a file (like Metadata)
+    pub fn get_public_link_for_file<'a, T: TryInto<PCloudFile>>(
+        &self,
+        file_like: T,
+    ) -> Result<PublicFileLinkRequestBuilder, Box<dyn 'a + std::error::Error>>
+    where
+        T::Error: 'a + std::error::Error,
+    {
+        PublicFileLinkRequestBuilder::for_file(&self, file_like)
+    }
+
+    /// Returns the public download link for a public file link
+    pub async fn get_public_download_link_for_file(
+        &self,
+        link: &pcloud_model::PublicFileLink,
+    ) -> Result<pcloud_model::DownloadLink, Box<dyn std::error::Error>> {
+        PublicFileDownloadRequestBuilder::for_public_file(self, link.code.clone().unwrap().as_str())
+            .get()
+            .await
+    }
+
+    /// Returns the download link for a file. Accepts either a file id (u64), a file path (String) or any other pCloud object describing a file (like Metadata)
+    pub fn get_download_link_for_file<'a, T: TryInto<PCloudFile>>(
+        &self,
+        file_like: T,
+    ) -> Result<FileDownloadRequestBuilder, Box<dyn 'a + std::error::Error>>
+    where
+        T::Error: 'a + std::error::Error,
+    {
+        FileDownloadRequestBuilder::for_file(self, file_like)
+    }
+
+    /// Uploads files into a folder. Accepts either a folder id (u64), a folder path (String) or any other pCloud object describing a folder (like Metadata)
+    pub fn upload_file_into_folder<'a, T: TryInto<PCloudFolder>>(
+        &self,
+        folder_like: T,
+    ) -> Result<UploadRequestBuilder, Box<dyn 'a + std::error::Error>>
+    where
+        T::Error: 'a + std::error::Error,
+    {
+        UploadRequestBuilder::into_folder(self, folder_like)
     }
 }

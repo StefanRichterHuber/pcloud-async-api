@@ -221,3 +221,11 @@ impl DiffRequestBuilder {
         Ok(diff)
     }
 }
+
+impl PCloudClient {
+    /// List events on the users pCloud account.
+    /// see https://docs.pcloud.com/methods/general/diff.html for details
+    pub fn diff(&self) -> DiffRequestBuilder {
+        DiffRequestBuilder::create(self)
+    }
+}
