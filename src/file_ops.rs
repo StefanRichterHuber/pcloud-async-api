@@ -13,6 +13,7 @@ use log::debug;
 use reqwest::{Body, RequestBuilder, Response};
 
 /// Generic description of a PCloud File. Either by its file id (preferred) or by its path
+#[derive(Debug, Clone)]
 pub struct PCloudFile {
     /// ID of the target file
     pub(crate) file_id: Option<u64>,
@@ -91,8 +92,9 @@ impl TryInto<PCloudFile> for &FileOrFolderStat {
 
 /// Some methods can work with trees - that is set of files and folders, where folders can have files and subfolders inside them and so on.
 /// see https://docs.pcloud.com/structures/tree.html
-#[derive(Debug)]
 pub struct Tree {
+    /// Client to perform requests
+    client: PCloudClient,
     /// If set, contents of the folder with the given id will appear as root elements of the three. The folder itself does not appear as a part of the structure.
     folder_id: Option<u64>,
     /// If set, defines one or more folders that will appear as folders in the root folder. If multiple folderids are given, they MUST be separated by coma ,.
@@ -108,13 +110,14 @@ pub struct Tree {
 /// Some methods can work with trees - that is set of files and folders, where folders can have files and subfolders inside them and so on.
 #[allow(dead_code)]
 impl Tree {
-    pub fn create() -> Tree {
+    pub(crate) fn create(client: &PCloudClient) -> Tree {
         Tree {
             folder_id: None,
             folder_ids: Vec::default(),
             file_ids: Vec::default(),
             exclude_folder_ids: Vec::default(),
             exclude_file_ids: Vec::default(),
+            client: client.clone(),
         }
     }
 
@@ -168,61 +171,54 @@ impl Tree {
     }
 
     /// Adds a file or folder from a metadata object
-    pub fn with(self, source: &Metadata) -> Result<Self, Box<dyn std::error::Error>> {
+    pub async fn with(self, source: &Metadata) -> Result<Self, Box<dyn std::error::Error>> {
         if source.isfolder {
-            self.with_folder(source)
+            self.with_folder(source).await
         } else {
-            self.with_file(source)
+            self.with_file(source).await
         }
     }
 
     /// Excludes a file or folder
-    pub fn without(self, source: &Metadata) -> Result<Self, Box<dyn std::error::Error>> {
+    pub async fn without(self, source: &Metadata) -> Result<Self, Box<dyn std::error::Error>> {
         if source.isfolder {
-            self.without_folder(source)
+            self.without_folder(source).await
         } else {
-            self.without_file(source)
+            self.without_file(source).await
         }
     }
 
     /// If set, files with corresponding ids will appear in the root folder of the tree structure.
-    pub fn with_file<'a, T: TryInto<PCloudFile>>(
+    pub async fn with_file<'a, T: TryInto<PCloudFile>>(
         mut self,
         file_like: T,
     ) -> Result<Self, Box<dyn 'a + std::error::Error>>
     where
         T::Error: 'a + std::error::Error,
     {
-        let file: PCloudFile = file_like.try_into()?;
-
-        if let Some(file_id) = file.file_id {
-            self.file_ids.push(file_id);
-            Ok(self)
-        } else {
-            Err(PCloudResult::InvalidFileId)?
-        }
+        let file = file_like.try_into()?;
+        let file_id = self.client.get_file_id(file).await?;
+        self.file_ids.push(file_id);
+        Ok(self)
     }
 
     /// If set, defines fileids that are not to be included in the tree structure.
-    pub fn without_file<'a, T: TryInto<PCloudFile>>(
+    pub async fn without_file<'a, T: TryInto<PCloudFile>>(
         mut self,
         file_like: T,
     ) -> Result<Self, Box<dyn 'a + std::error::Error>>
     where
         T::Error: 'a + std::error::Error,
     {
-        let file: PCloudFile = file_like.try_into()?;
+        let file = file_like.try_into()?;
+        let file_id = self.client.get_file_id(file).await?;
 
-        if let Some(file_id) = file.file_id {
-            self.exclude_file_ids.push(file_id);
-            Ok(self)
-        } else {
-            Err(PCloudResult::InvalidFileId)?
-        }
+        self.exclude_file_ids.push(file_id);
+        Ok(self)
     }
 
     /// If set, defines one or more folders that will appear as folders in the root folder.
-    pub fn with_folder<'a, T: TryInto<PCloudFolder>>(
+    pub async fn with_folder<'a, T: TryInto<PCloudFolder>>(
         mut self,
         folder_like: T,
     ) -> Result<Self, Box<dyn 'a + std::error::Error>>
@@ -230,17 +226,14 @@ impl Tree {
         T::Error: 'a + std::error::Error,
     {
         let folder: PCloudFolder = folder_like.try_into()?;
+        let folder_id = self.client.get_folder_id(folder).await?;
 
-        if let Some(folder_id) = folder.folder_id {
-            self.folder_ids.push(folder_id);
-            Ok(self)
-        } else {
-            Err(PCloudResult::InvalidFolderId)?
-        }
+        self.folder_ids.push(folder_id);
+        Ok(self)
     }
 
     /// If set, folders with the given id will be removed from the tree structure. This is useful when you want to include a folder in the tree structure with some of it's subfolders excluded.
-    pub fn without_folder<'a, T: TryInto<PCloudFolder>>(
+    pub async fn without_folder<'a, T: TryInto<PCloudFolder>>(
         mut self,
         folder_like: T,
     ) -> Result<Self, Box<dyn 'a + std::error::Error>>
@@ -248,17 +241,14 @@ impl Tree {
         T::Error: 'a + std::error::Error,
     {
         let folder: PCloudFolder = folder_like.try_into()?;
+        let folder_id = self.client.get_folder_id(folder).await?;
 
-        if let Some(folder_id) = folder.folder_id {
-            self.exclude_folder_ids.push(folder_id);
-            Ok(self)
-        } else {
-            Err(PCloudResult::InvalidFolderId)?
-        }
+        self.exclude_folder_ids.push(folder_id);
+        Ok(self)
     }
 
-    /// If set, contents of the folder with the given id will appear as root elements of the three. The folder itself does not appear as a part of the structure.
-    pub fn with_content_of_folder<'a, T: TryInto<PCloudFolder>>(
+    /// If set, contents of the folder with the given id will appear as root elements of the tree. The folder itself does not appear as a part of the structure.
+    pub async fn with_content_of_folder<'a, T: TryInto<PCloudFolder>>(
         mut self,
         folder_like: T,
     ) -> Result<Self, Box<dyn 'a + std::error::Error>>
@@ -266,13 +256,10 @@ impl Tree {
         T::Error: 'a + std::error::Error,
     {
         let folder: PCloudFolder = folder_like.try_into()?;
+        let folder_id = self.client.get_folder_id(folder).await?;
 
-        if let Some(folder_id) = folder.folder_id {
-            self.folder_id = Some(folder_id);
-            Ok(self)
-        } else {
-            Err(PCloudResult::InvalidFolderId)?
-        }
+        self.folder_id = Some(folder_id);
+        Ok(self)
     }
 }
 
@@ -1240,8 +1227,11 @@ impl PCloudClient {
                 Err(PCloudResult::NoFileIdOrPathProvided)?
             }
 
-            let file_id = metadata.fileid.unwrap();
-            Ok(file_id)
+            if let Some(file_id) = metadata.fileid {
+                Ok(file_id)
+            } else {
+                Err(PCloudResult::NoFileIdOrPathProvided)?
+            }
         }
     }
 
@@ -1374,5 +1364,10 @@ impl PCloudClient {
         T::Error: 'a + std::error::Error,
     {
         UploadRequestBuilder::into_folder(self, folder_like)
+    }
+
+    /// Creates a Tree required for some requests (like building a zip file)
+    pub fn create_tree(&self) -> Tree {
+        Tree::create(self)
     }
 }

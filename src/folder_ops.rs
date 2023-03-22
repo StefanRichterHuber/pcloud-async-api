@@ -5,6 +5,7 @@ use crate::{
 use log::debug;
 
 /// Generic description of a PCloud folder. Either by its file id (preferred) or by its path
+#[derive(Debug, Clone)]
 pub struct PCloudFolder {
     /// ID of the target folder
     pub folder_id: Option<u64>,
@@ -691,8 +692,12 @@ impl PCloudClient {
             if !metadata.isfolder {
                 Err(PCloudResult::InvalidFolderId)?
             }
-            let folder_id = metadata.folderid.unwrap();
-            Ok(folder_id)
+
+            if let Some(folder_id) = metadata.folderid {
+                Ok(folder_id)
+            } else {
+                Err(PCloudResult::InvalidFolderId)?
+            }
         }
     }
 }
