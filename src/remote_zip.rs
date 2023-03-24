@@ -115,6 +115,7 @@ impl SaveZipRequestBuilder {
     ///  Starts creating a zip file in the user's filesystem and notifies the user of the progress
     pub async fn execute_with_progress_notification(
         self,
+        polling_interval: Duration,
     ) -> Result<(FileOrFolderStat, Receiver<SaveZipProgressResponse>), Box<dyn std::error::Error>>
     {
         let progress_hash = Uuid::new_v4().to_string();
@@ -150,7 +151,7 @@ impl SaveZipRequestBuilder {
                         warn!("Errors during receiving savezipprogress: {}", err);
                     }
                 };
-                sleep(Duration::from_millis(1000)).await;
+                sleep(polling_interval).await;
             }
         });
 
