@@ -413,16 +413,16 @@ async fn test_zip_download() -> Result<(), Box<dyn std::error::Error>> {
     let bytes = zip.bytes().await?;
 
     // Write zip to file
-    let mut file = std::fs::File::create("test.zip")?;
+    // let mut file = std::fs::File::create("test.zip")?;
 
-    let mut content = Cursor::new(bytes.clone());
-    copy(&mut content, &mut file)?;
-    drop(file);
+    //let mut content = Cursor::new(bytes.clone());
+    // copy(&mut content, &mut file)?;
+    // drop(file);
+    // fs::remove_file("test.zip")?;
 
-    // Open file
-    let file = fs::File::open("test.zip").unwrap();
-
-    let mut archive = zip::ZipArchive::new(file).unwrap();
+    // Open byte content
+    let mut archive = zip::ZipArchive::new(Cursor::new(bytes)).unwrap();
+    assert_eq!(2, archive.len());
 
     for i in 0..archive.len() {
         let mut zip_file = archive.by_index(i).unwrap();
@@ -438,8 +438,6 @@ async fn test_zip_download() -> Result<(), Box<dyn std::error::Error>> {
             assert!(false, "Should not happen");
         }
     }
-
-    fs::remove_file("test.zip")?;
 
     // Delete test folder
     let deletefolder_result = pcloud
