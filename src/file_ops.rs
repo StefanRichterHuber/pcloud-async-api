@@ -21,56 +21,68 @@ pub struct PCloudFile {
     pub(crate) path: Option<String>,
 }
 
-/// Convert Strings into pCloud file paths
-impl Into<PCloudFile> for &str {
-    fn into(self) -> PCloudFile {
-        PCloudFile {
-            file_id: None,
-            path: Some(self.to_string()),
+impl Display for PCloudFile {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if let Some(file_id) = self.file_id {
+            write!(f, "{}", file_id)
+        } else if let Some(path) = &self.path {
+            write!(f, "{}", path)
+        } else {
+            write!(f, "[Empty pCloud file descriptor!]")
         }
     }
 }
 
 /// Convert Strings into pCloud file paths
-impl Into<PCloudFile> for String {
-    fn into(self) -> PCloudFile {
+impl From<&str> for PCloudFile {
+    fn from(value: &str) -> PCloudFile {
         PCloudFile {
             file_id: None,
-            path: Some(self),
+            path: Some(value.to_string()),
+        }
+    }
+}
+
+/// Convert Strings into pCloud file paths
+impl From<String> for PCloudFile {
+    fn from(value: String) -> PCloudFile {
+        PCloudFile {
+            file_id: None,
+            path: Some(value),
         }
     }
 }
 
 /// Convert u64 into pCloud file ids
-impl Into<PCloudFile> for u64 {
-    fn into(self) -> PCloudFile {
+impl From<u64> for PCloudFile {
+    fn from(value: u64) -> PCloudFile {
         PCloudFile {
-            file_id: Some(self),
+            file_id: Some(value),
             path: None,
         }
     }
 }
 
 /// Convert u64 into pCloud file ids
-impl Into<PCloudFile> for &u64 {
-    fn into(self) -> PCloudFile {
+impl From<&u64> for PCloudFile {
+    fn from(value: &u64) -> PCloudFile {
         PCloudFile {
-            file_id: Some(self.clone()),
+            file_id: Some(value.clone()),
             path: None,
         }
     }
 }
 
 /// Extract file id from pCloud file or folder metadata response
-impl TryInto<PCloudFile> for &Metadata {
+impl TryFrom<&Metadata> for PCloudFile {
     type Error = PCloudResult;
 
-    fn try_into(self) -> Result<PCloudFile, PCloudResult> {
-        if self.isfolder {
+    fn try_from(value: &Metadata) -> Result<PCloudFile, PCloudResult> {
+        if value.isfolder {
             Err(PCloudResult::InvalidFileOrFolderName)?
         } else {
             Ok(PCloudFile {
-                file_id: self.fileid,
+                file_id: value.fileid,
                 path: None,
             })
         }
@@ -78,11 +90,11 @@ impl TryInto<PCloudFile> for &Metadata {
 }
 
 /// Extract file id from pCloud file or folder metadata response
-impl TryInto<PCloudFile> for &FileOrFolderStat {
+impl TryFrom<&FileOrFolderStat> for PCloudFile {
     type Error = PCloudResult;
-    fn try_into(self) -> Result<PCloudFile, PCloudResult> {
-        if self.result == PCloudResult::Ok && self.metadata.is_some() {
-            let metadata = self.metadata.as_ref().unwrap();
+    fn try_from(value: &FileOrFolderStat) -> Result<PCloudFile, PCloudResult> {
+        if value.result == PCloudResult::Ok && value.metadata.is_some() {
+            let metadata = value.metadata.as_ref().unwrap();
             metadata.try_into()
         } else {
             Err(PCloudResult::InvalidFileOrFolderName)?
