@@ -4,9 +4,24 @@ use chrono::{DateTime, TimeZone, Utc};
 use serde::{Deserialize, Serialize};
 use serde_repr::*;
 
+/// # ERRORS
+/// There are number of cases when you request can't be processed as is and an error will be returned. Error codes are always 4 digit. They can be grouped into few categories depending on the type of error occurred.
+/// @see https://docs.pcloud.com/errors/
+///
+/// | Code  |	Description |
+/// | ----  | ------------- |
+/// | 1xxx	| These errors are reserved for cases when the API client misbehaved. Most of the time it means that required parameters were not provided, text was provided when a number was expected, or one of several valid values was expected, but the input was something else. Also, trying to call a method that requires login without providing any login credentials is a 1xxx error, while providing bad credentials is not. Well behaved applications should never receive this type of error, regardless of user actions. It is advisable to find a way to send the error and the error message to the application developer. |
+/// | 19xx	| This is sub-type of 1xxx errors. It may be the case that the application is misbehaving or it could be a synchronization error - e.g. you are trying to monitor the progress of an upload that the server knows nothing about. It might be the case that the application has passed a wrong or not existing hash or it could be that the upload request is still in transit and the API server is yet to start processing it. If you are sure that you have passed the correct parameters, it is safe to retry the request later. |
+/// | 2xxx	| The user is trying to preform invalid operation or is providing bad data. Example errors are bad filename supplied, file not found or folder already exists. While a part of these can be prevented in the application (notably can not delete root folder), given the multi-user and multi client environment, files that were here just a moment ago may disappear. Generally these types of errors can be displayed directly to the user. However, it is preferable for the applications to actually understand the error codes instead of blindly displaying them. Of course, in some cases this errors can be the application's fault - e.g. the user wanted to open a file, but the application provided incorrect folderid. Keep in mind that user here is a quite abstract concept. If your applications is a filesystem, your users are not the end users, but end users' applications. |
+/// | 3xxx	| These are rare errors when something can not be done and is unlikely that retrying will give any better results. One example of error of this type is trying to create a thumbnail from text file renamed to mypicture.jpg. It can't be classified as 1xxx error as the application did nothing wrong - it received thumb: true and decided to create thumbnail. The user probably didn't do anything wrong either (apart from renaming text file to mypicture.jpg, but it was probably the application that decided to display the thumbnail). These errors should be ignored if the unsuccessful action is not explicitly requested by user (fall back for failing to display a thumbnail would be to simply display an icon instead) and if the action was indeed requested by user, it should be reported that the file is bad. |
+/// | 4xxx	| Should generally be very rare. They are reserved for cases when server is not willing to process you request. This generally means that the API server is rate limiting you because of too many requests or login tries. It should be possible to retry the request at a later stage. |
+/// | 5xxx	| Errors of this type are the ones that we work very hard to never happen. Nevertheless they are still possible. These type of errors generally mean that we can not satisfy the request at this time (e.g. a server is unavailable) but it is very likely that the API server will be able to satisfy the request at a later stage. |
+/// | 6xxx	| These are not real errors, but legitimate non-error answers. They are used by conditional methods mostly to signal some action not required state |
+/// | 7xxx	| These errors generally represent error condition for which neither the implementation that accesses the API nor it's user are responsible. These errors should be expected when a method is indicated to return one of those and should be presented to the user more like a normal condition, rather than you got an error, the sky is falling down. Typical 7xxx error is for example when somebody has deleted his public link and the user is trying to access it. |
 #[derive(Serialize_repr, Deserialize_repr, PartialEq, Debug, Clone)]
 #[repr(u16)]
 pub enum PCloudResult {
+    /// No Error    
     Ok = 0,
     LogInRequired = 1000,
     NoFullPathOrNameOrFolderIdProvided = 1001,
@@ -42,6 +57,7 @@ pub enum PCloudResult {
     WriteError = 5003,
 }
 
+/// Necessary to implement Error trait
 impl Display for PCloudResult {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -107,6 +123,7 @@ impl Display for PCloudResult {
         }
     }
 }
+/// PCloudResult implements the Error trait
 impl std::error::Error for PCloudResult {}
 
 /// Category of the file
@@ -313,8 +330,8 @@ pub enum DiffEvent {
     ModifyUserInfo,
 }
 
-///  For shares, a "share" object is provided with keys
-///  https://docs.pcloud.com/structures/share.html
+/// For shares, a "share" object is provided with keys
+/// https://docs.pcloud.com/structures/share.html
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Share {
     pub folderid: u64,
