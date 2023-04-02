@@ -1,7 +1,7 @@
-#![cfg(feature = "remote_zip")]
 use std::time::Duration;
 
 use log::warn;
+use reqwest::Response;
 use tokio::{
     sync::mpsc::{self, Receiver, Sender},
     time::sleep,
@@ -14,6 +14,38 @@ use crate::{
     pcloud_client::PCloudClient,
     pcloud_model::{FileOrFolderStat, SaveZipProgressResponse, WithPCloudResult},
 };
+
+pub struct GetZipRequestBuilder {
+    /// Client to actually perform the request
+    client: PCloudClient,
+    /// Tree containing the files / folders to pack
+    tree: Tree,
+}
+
+impl GetZipRequestBuilder {
+    /// Initiates the request
+    pub(crate) fn zip(client: &PCloudClient, tree: Tree) -> GetZipRequestBuilder {
+        GetZipRequestBuilder {
+            client: client.clone(),
+            tree: tree,
+        }
+    }
+
+    /// Starts creating a zip file from the given files and download it directly
+    pub async fn download(self) -> Result<Response, Box<dyn std::error::Error>> {
+        let mut r = self
+            .client
+            .client
+            .get(format!("{}/getzip", self.client.api_host));
+
+        r = self.tree.add_to_request(r);
+
+        r = self.client.add_token(r);
+
+        let resp = r.send().await?;
+        Ok(resp)
+    }
+}
 
 pub struct SaveZipRequestBuilder {
     /// Client to actually perform the request
@@ -115,6 +147,7 @@ impl SaveZipRequestBuilder {
     ///  Starts creating a zip file in the user's filesystem and notifies the user of the progress
     pub async fn execute_with_progress_notification(
         self,
+        polling_interval: Duration,
     ) -> Result<(FileOrFolderStat, Receiver<SaveZipProgressResponse>), Box<dyn std::error::Error>>
     {
         let progress_hash = Uuid::new_v4().to_string();
@@ -150,7 +183,7 @@ impl SaveZipRequestBuilder {
                         warn!("Errors during receiving savezipprogress: {}", err);
                     }
                 };
-                sleep(Duration::from_millis(1000)).await;
+                sleep(polling_interval).await;
             }
         });
 
@@ -196,7 +229,18 @@ impl SaveZipRequestBuilder {
 
 impl PCloudClient {
     /// Creates a zip file on the remote file system with the content specified by the given Tree
+    /// > WARNING: Currently all accesses return `2003 Access denied`.
     pub fn create_zip(&self, tree: Tree) -> InitiateSavezipRequestBuilder {
         InitiateSavezipRequestBuilder::zip(self, tree)
+    }
+
+    /// Downloads a zip file of the files requested in the given tree.
+    ///  When successful it returns a zip archive over the current API connection with all the files and directories in the requested tree.
+    /// If the size of the resulting file is going to be over 4Gb or if it contains more than 65535 entries, the zip64 format is used, otherwise the file is plain zip. This is the fastest way to generate a zip file as the API server will construct the archive on-the-fly for you. Therefore the download will start instantly even with multi-gigabyte files.
+    pub async fn download_zip_of_files(
+        &self,
+        tree: Tree,
+    ) -> Result<Response, Box<dyn std::error::Error>> {
+        GetZipRequestBuilder::zip(self, tree).download().await
     }
 }

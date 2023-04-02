@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use crate::{
     pcloud_client::PCloudClient,
     pcloud_model::{self, FileOrFolderStat, Metadata, PCloudResult, WithPCloudResult},
@@ -5,6 +7,7 @@ use crate::{
 use log::debug;
 
 /// Generic description of a PCloud folder. Either by its file id (preferred) or by its path
+#[derive(Debug, Clone)]
 pub struct PCloudFolder {
     /// ID of the target folder
     pub folder_id: Option<u64>,
@@ -12,22 +15,34 @@ pub struct PCloudFolder {
     pub path: Option<String>,
 }
 
+impl Display for PCloudFolder {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if let Some(folder_id) = self.folder_id {
+            write!(f, "{}", folder_id)
+        } else if let Some(path) = &self.path {
+            write!(f, "{}", path)
+        } else {
+            write!(f, "[Empty pCloud folder descriptor!]")
+        }
+    }
+}
+
 /// Convert Strings into pCloud folder paths
-impl TryInto<PCloudFolder> for &str {
+impl TryFrom<&str> for PCloudFolder {
     type Error = PCloudResult;
 
-    fn try_into(self) -> Result<PCloudFolder, PCloudResult> {
-        if self == "/" {
+    fn try_from(value: &str) -> Result<PCloudFolder, PCloudResult> {
+        if value == "/" {
             // Root folder has always id 0
             Ok(PCloudFolder {
                 folder_id: Some(0),
                 path: None,
             })
-        } else if self.starts_with("/") {
+        } else if value.starts_with("/") {
             // File paths must always be absolute paths
             Ok(PCloudFolder {
                 folder_id: None,
-                path: Some(self.to_string()),
+                path: Some(value.to_string()),
             })
         } else {
             Err(PCloudResult::InvalidPath)?
@@ -36,21 +51,21 @@ impl TryInto<PCloudFolder> for &str {
 }
 
 /// Convert Strings into pCloud folder paths
-impl TryInto<PCloudFolder> for String {
+impl TryFrom<String> for PCloudFolder {
     type Error = PCloudResult;
 
-    fn try_into(self) -> Result<PCloudFolder, PCloudResult> {
-        if self == "/" {
+    fn try_from(value: String) -> Result<PCloudFolder, PCloudResult> {
+        if value == "/" {
             // Root folder has always id 0
             Ok(PCloudFolder {
                 folder_id: Some(0),
                 path: None,
             })
-        } else if self.starts_with("/") {
+        } else if value.starts_with("/") {
             // File paths must always be absolute paths
             Ok(PCloudFolder {
                 folder_id: None,
-                path: Some(self),
+                path: Some(value),
             })
         } else {
             Err(PCloudResult::InvalidPath)?
@@ -59,35 +74,35 @@ impl TryInto<PCloudFolder> for String {
 }
 
 /// Convert u64 into pCloud folder ids
-impl Into<PCloudFolder> for u64 {
-    fn into(self) -> PCloudFolder {
+impl From<u64> for PCloudFolder {
+    fn from(value: u64) -> PCloudFolder {
         PCloudFolder {
-            folder_id: Some(self),
+            folder_id: Some(value),
             path: None,
         }
     }
 }
 
 /// Convert u64 into pCloud folder ids
-impl Into<PCloudFolder> for &u64 {
-    fn into(self) -> PCloudFolder {
+impl From<&u64> for PCloudFolder {
+    fn from(value: &u64) -> PCloudFolder {
         PCloudFolder {
-            folder_id: Some(self.clone()),
+            folder_id: Some(value.clone()),
             path: None,
         }
     }
 }
 
 /// Extract file id from pCloud folder metadata
-impl TryInto<PCloudFolder> for &Metadata {
+impl TryFrom<&Metadata> for PCloudFolder {
     type Error = PCloudResult;
 
-    fn try_into(self) -> Result<PCloudFolder, PCloudResult> {
-        if !self.isfolder {
+    fn try_from(value: &Metadata) -> Result<PCloudFolder, PCloudResult> {
+        if !value.isfolder {
             Err(PCloudResult::InvalidFileOrFolderName)?
         } else {
             Ok(PCloudFolder {
-                folder_id: self.folderid,
+                folder_id: value.folderid,
                 path: None,
             })
         }
@@ -95,12 +110,12 @@ impl TryInto<PCloudFolder> for &Metadata {
 }
 
 /// Extract folder id from pCloud file or folder metadata response
-impl TryInto<PCloudFolder> for &FileOrFolderStat {
+impl TryFrom<&FileOrFolderStat> for PCloudFolder {
     type Error = PCloudResult;
 
-    fn try_into(self) -> Result<PCloudFolder, PCloudResult> {
-        if self.result == PCloudResult::Ok && self.metadata.is_some() {
-            let metadata = self.metadata.as_ref().unwrap();
+    fn try_from(value: &FileOrFolderStat) -> Result<PCloudFolder, PCloudResult> {
+        if value.result == PCloudResult::Ok && value.metadata.is_some() {
+            let metadata = value.metadata.as_ref().unwrap();
             metadata.try_into()
         } else {
             Err(PCloudResult::InvalidPath)?
@@ -691,8 +706,12 @@ impl PCloudClient {
             if !metadata.isfolder {
                 Err(PCloudResult::InvalidFolderId)?
             }
-            let folder_id = metadata.folderid.unwrap();
-            Ok(folder_id)
+
+            if let Some(folder_id) = metadata.folderid {
+                Ok(folder_id)
+            } else {
+                Err(PCloudResult::InvalidFolderId)?
+            }
         }
     }
 }

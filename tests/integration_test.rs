@@ -1,9 +1,15 @@
+use std::{
+    fs,
+    io::{copy, Cursor},
+};
+
 use chrono::DateTime;
 use log::info;
 use pcloud_async_api::{
     self,
     pcloud_model::{DiffEntry, DiffEvent, PCloudResult},
 };
+use std::io::Read;
 use tokio::time::{sleep, Duration};
 use uuid::Uuid;
 
@@ -327,6 +333,111 @@ async fn test_file_operations() -> Result<(), Box<dyn std::error::Error>> {
     let delete_result = pcloud.delete_file(file_id).await?;
     assert_eq!(PCloudResult::Ok, delete_result.result);
     info!("Deleted file {}", delete_result.metadata.unwrap().name);
+
+    // Delete test folder
+    let deletefolder_result = pcloud
+        .delete_folder(&createfolder_result.metadata.unwrap())?
+        .delete_recursive()
+        .await?;
+    assert_eq!(PCloudResult::Ok, deletefolder_result.result);
+    info!("Deleted folder {}", folder_name);
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_zip_download() -> Result<(), Box<dyn std::error::Error>> {
+    let folder_name = Uuid::new_v4().to_string();
+
+    let pcloud = get_client().await?;
+    // Create test folder
+    let createfolder_result = pcloud.create_folder("/", &folder_name)?.execute().await?;
+
+    assert_eq!(PCloudResult::Ok, createfolder_result.result);
+    assert_eq!(
+        folder_name,
+        createfolder_result.metadata.as_ref().unwrap().name
+    );
+    info!("Created test folder {}", folder_name);
+
+    // Upload two files
+    let upload_result = pcloud
+        .upload_file_into_folder(format!("/{}", folder_name))?
+        .rename_if_exists(false)
+        .with_file("test.txt", "This is nice test content")
+        .with_file("second test.txt", "This is another nice test content")
+        .upload()
+        .await?;
+
+    assert_eq!(PCloudResult::Ok, upload_result.result);
+    assert_eq!(2, upload_result.fileids.len());
+    assert_eq!(2, upload_result.metadata.len());
+    assert_eq!("test.txt", upload_result.metadata.get(0).unwrap().name);
+    assert_eq!(
+        "second test.txt",
+        upload_result.metadata.get(1).unwrap().name
+    );
+
+    let file_id = upload_result.fileids.get(0).unwrap();
+    let file_id2 = upload_result.fileids.get(1).unwrap();
+
+    // Download file
+    let download_result = pcloud.download_file(file_id).await?.text().await?;
+    assert_eq!("This is nice test content", download_result);
+
+    let download_result2 = pcloud.download_file(file_id2).await?.text().await?;
+    assert_eq!("This is another nice test content", download_result2);
+    info!("Downloaded files");
+
+    // Get file metadata
+    let metadata = pcloud.get_file_metadata(file_id).await?;
+    assert_eq!(PCloudResult::Ok, metadata.result);
+    assert_eq!("test.txt", metadata.metadata.as_ref().unwrap().name);
+    info!(
+        "Downloaded file metadata of {}",
+        metadata.metadata.as_ref().unwrap().name
+    );
+
+    // Get zip file containing both files to a file
+    let zip = pcloud
+        .download_zip_of_files(
+            pcloud
+                .create_tree()
+                .with_file(file_id)
+                .await?
+                .with_file(file_id2)
+                .await?,
+        )
+        .await?;
+
+    let bytes = zip.bytes().await?;
+
+    // Write zip to file
+    // let mut file = std::fs::File::create("test.zip")?;
+
+    //let mut content = Cursor::new(bytes.clone());
+    // copy(&mut content, &mut file)?;
+    // drop(file);
+    // fs::remove_file("test.zip")?;
+
+    // Open byte content
+    let mut archive = zip::ZipArchive::new(Cursor::new(bytes)).unwrap();
+    assert_eq!(2, archive.len());
+
+    for i in 0..archive.len() {
+        let mut zip_file = archive.by_index(i).unwrap();
+        let mut buffer = String::new();
+
+        zip_file.read_to_string(&mut buffer)?;
+
+        if zip_file.name() == "test.txt" {
+            assert_eq!("This is nice test content", buffer);
+        } else if zip_file.name() == "second test.txt" {
+            assert_eq!("This is another nice test content", buffer);
+        } else {
+            assert!(false, "Should not happen");
+        }
+    }
 
     // Delete test folder
     let deletefolder_result = pcloud
