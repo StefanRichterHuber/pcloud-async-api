@@ -1,7 +1,4 @@
-use std::{
-    fs,
-    io::{copy, Cursor},
-};
+use std::io::Cursor;
 
 use chrono::DateTime;
 use log::info;
@@ -30,7 +27,7 @@ async fn get_client(
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn test_event_stream() -> Result<(), Box<dyn std::error::Error>> {
     // Lets wait some time to avoid previous events to be shown (due to times not in sync between client and server)
-    sleep(Duration::from_millis(5000)).await;
+    sleep(Duration::from_millis(10000)).await;
 
     let now = chrono::offset::Local::now();
 
