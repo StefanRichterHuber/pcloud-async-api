@@ -1,3 +1,5 @@
+[![Rust](https://github.com/StefanRichterHuber/pcloud-async-api/actions/workflows/rust.yml/badge.svg?branch=main)](https://github.com/StefanRichterHuber/pcloud-async-api/actions/workflows/rust.yml)
+
 # Rust client for pCloud
 
 This is Rust client for the pCloud rest api as described in the [pCloud API documention](https://docs.pcloud.com/). It uses async reqwest.
