@@ -8,9 +8,9 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  PCLOUD_HOST: ${{ vars.PCLOUD_HOST }}
-  PCLOUD_PASSWORD: ${{ vars.PCLOUD_PASSWORD }}
-  PCLOUD_USER: ${{ vars.PCLOUD_USER }}
+  PCLOUD_HOST: ${{ secrets.PCLOUD_HOST }}
+  PCLOUD_PASSWORD: ${{ secrets.PCLOUD_PASSWORD }}
+  PCLOUD_USER: ${{ secrets.PCLOUD_USER }}
   
 
 jobs:
