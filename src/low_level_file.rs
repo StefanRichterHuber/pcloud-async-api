@@ -5,8 +5,8 @@ use log::{debug, warn};
 use reqwest::Body;
 
 use crate::{
-    file_ops::PCloudFile,
-    folder_ops::PCloudFolder,
+    file_ops::{FileDescriptor, PCloudFile},
+    folder_ops::FolderDescriptor,
     pcloud_client::PCloudClient,
     pcloud_model::{FileCloseResponse, FileOpenResponse, FileWriteResponse, WithPCloudResult},
 };
@@ -57,14 +57,11 @@ impl InitiatePCloudFileOpenRequest {
     }
 
     /// Opens the file by its file id
-    pub async fn by_file_id<'a, T: TryInto<PCloudFile>>(
+    pub async fn by_file_id<'a, T: FileDescriptor>(
         self,
         file_like: T,
-    ) -> Result<PCloudFileOpenRequest, Box<dyn 'a + std::error::Error>>
-    where
-        T::Error: 'a + std::error::Error,
-    {
-        let file: PCloudFile = file_like.try_into()?;
+    ) -> Result<PCloudFileOpenRequest, Box<dyn 'a + std::error::Error>> {
+        let file = file_like.to_file()?;
         let file_id = self.client.get_file_id(file).await?;
 
         Ok(PCloudFileOpenRequest {
@@ -90,15 +87,12 @@ impl InitiatePCloudFileOpenRequest {
     }
 
     /// Target folder and file name of the target  file
-    pub async fn by_file_in_folder<'a, T: TryInto<PCloudFolder>>(
+    pub async fn by_file_in_folder<'a, T: FolderDescriptor>(
         self,
         folder_like: T,
         file_name: &str,
-    ) -> Result<PCloudFileOpenRequest, Box<dyn 'a + std::error::Error>>
-    where
-        T::Error: 'a + std::error::Error,
-    {
-        let folder: PCloudFolder = folder_like.try_into()?;
+    ) -> Result<PCloudFileOpenRequest, Box<dyn 'a + std::error::Error>> {
+        let folder = folder_like.to_folder()?;
         let folder_id = self.client.get_folder_id(folder).await?;
 
         Ok(PCloudFileOpenRequest {
@@ -260,7 +254,7 @@ impl Drop for OpenPCloudFile {
 
             let op = tokio::spawn(async move {
                 match Self::close_file(&client, fd).await {
-                    Ok(v) => {
+                    Ok(_) => {
                         debug!("Successfully closed file with id {}", file_id);
                     }
                     Err(e) => {

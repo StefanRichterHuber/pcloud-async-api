@@ -1,7 +1,7 @@
 use std::fmt::Display;
 use std::time::Duration;
 
-use crate::file_ops::PCloudFile;
+use crate::file_ops::{FileDescriptor, PCloudFile};
 use crate::pcloud_client::PCloudClient;
 use crate::pcloud_model::{self, Diff, WithPCloudResult};
 use crate::pcloud_model::{DiffEntry, FileHistory};
@@ -42,14 +42,11 @@ pub struct GetFileHistoryRequestBuilder {
 
 impl GetFileHistoryRequestBuilder {
     /// Creates a GetFileHistoryRequestBuilder instance
-    pub fn create<'a, T: TryInto<PCloudFile>>(
+    pub fn create<'a, T: FileDescriptor>(
         client: &PCloudClient,
         file_like: T,
-    ) -> Result<GetFileHistoryRequestBuilder, Box<dyn 'a + std::error::Error>>
-    where
-        T::Error: 'a + std::error::Error,
-    {
-        let file = file_like.try_into()?;
+    ) -> Result<GetFileHistoryRequestBuilder, Box<dyn 'a + std::error::Error>> {
+        let file = file_like.to_file()?;
 
         let result = GetFileHistoryRequestBuilder {
             client: client.clone(),
@@ -280,13 +277,10 @@ impl PCloudClient {
     }
 
     /// returns event history of a file. File might be a deleted one.
-    pub async fn get_file_history<'a, T: TryInto<PCloudFile>>(
+    pub async fn get_file_history<'a, T: FileDescriptor>(
         &self,
         file_like: T,
-    ) -> Result<FileHistory, Box<dyn 'a + std::error::Error>>
-    where
-        T::Error: 'a + std::error::Error,
-    {
+    ) -> Result<FileHistory, Box<dyn 'a + std::error::Error>> {
         let result = GetFileHistoryRequestBuilder::create(self, file_like)?
             .get()
             .await?;
