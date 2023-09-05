@@ -1,7 +1,7 @@
 use std::fmt::Display;
 
 use crate::{
-    folder_ops::PCloudFolder,
+    folder_ops::FolderDescriptor,
     pcloud_client::PCloudClient,
     pcloud_model::{
         self, FileOrFolderStat, Metadata, PCloudResult, PublicFileLink, RevisionList, UploadedFile,
@@ -12,13 +12,66 @@ use chrono::{DateTime, TimeZone};
 use log::debug;
 use reqwest::{Body, RequestBuilder, Response};
 
-/// Generic description of a PCloud File. Either by its file id (preferred) or by its path
+/// Generic description of a pCloud File. Either by its file id (preferred) or by its path
+pub trait FileDescriptor {
+    /// Convert the descriptor into a PCloudFile
+    fn to_file(self) -> Result<PCloudFile, PCloudResult>;
+}
+
+impl FileDescriptor for u64 {
+    fn to_file(self) -> Result<PCloudFile, PCloudResult> {
+        Ok(self.into())
+    }
+}
+
+impl FileDescriptor for String {
+    fn to_file(self) -> Result<PCloudFile, PCloudResult> {
+        Ok(self.into())
+    }
+}
+
+impl FileDescriptor for &str {
+    fn to_file(self) -> Result<PCloudFile, PCloudResult> {
+        Ok(self.into())
+    }
+}
+
+impl FileDescriptor for &u64 {
+    fn to_file(self) -> Result<PCloudFile, PCloudResult> {
+        Ok(self.into())
+    }
+}
+
+impl FileDescriptor for &Metadata {
+    fn to_file(self) -> Result<PCloudFile, PCloudResult> {
+        self.try_into()
+    }
+}
+
+impl FileDescriptor for &FileOrFolderStat {
+    fn to_file(self) -> Result<PCloudFile, PCloudResult> {
+        self.try_into()
+    }
+}
+
+impl FileDescriptor for PCloudFile {
+    fn to_file(self) -> Result<PCloudFile, PCloudResult> {
+        Ok(self)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct PCloudFile {
     /// ID of the target file
     pub(crate) file_id: Option<u64>,
     /// Path of the target file
     pub(crate) path: Option<String>,
+}
+
+impl PCloudFile {
+    pub fn is_empty(&self) -> bool {
+        self.file_id.is_none() && self.path.is_none()
+    }
 }
 
 impl Display for PCloudFile {
@@ -201,74 +254,54 @@ impl Tree {
     }
 
     /// If set, files with corresponding ids will appear in the root folder of the tree structure.
-    pub async fn with_file<'a, T: TryInto<PCloudFile>>(
+    pub async fn with_file<'a, T: FileDescriptor>(
         mut self,
         file_like: T,
-    ) -> Result<Self, Box<dyn 'a + std::error::Error>>
-    where
-        T::Error: 'a + std::error::Error,
-    {
-        let file = file_like.try_into()?;
-        let file_id = self.client.get_file_id(file).await?;
+    ) -> Result<Self, Box<dyn 'a + std::error::Error>> {
+        let file_id = self.client.get_file_id(file_like).await?;
         self.file_ids.push(file_id);
         Ok(self)
     }
 
     /// If set, defines fileids that are not to be included in the tree structure.
-    pub async fn without_file<'a, T: TryInto<PCloudFile>>(
+    pub async fn without_file<'a, T: FileDescriptor>(
         mut self,
         file_like: T,
-    ) -> Result<Self, Box<dyn 'a + std::error::Error>>
-    where
-        T::Error: 'a + std::error::Error,
-    {
-        let file = file_like.try_into()?;
-        let file_id = self.client.get_file_id(file).await?;
+    ) -> Result<Self, Box<dyn 'a + std::error::Error>> {
+        let file_id = self.client.get_file_id(file_like).await?;
 
         self.exclude_file_ids.push(file_id);
         Ok(self)
     }
 
     /// If set, defines one or more folders that will appear as folders in the root folder.
-    pub async fn with_folder<'a, T: TryInto<PCloudFolder>>(
+    pub async fn with_folder<'a, T: FolderDescriptor>(
         mut self,
         folder_like: T,
-    ) -> Result<Self, Box<dyn 'a + std::error::Error>>
-    where
-        T::Error: 'a + std::error::Error,
-    {
-        let folder: PCloudFolder = folder_like.try_into()?;
-        let folder_id = self.client.get_folder_id(folder).await?;
+    ) -> Result<Self, Box<dyn 'a + std::error::Error>> {
+        let folder_id = self.client.get_folder_id(folder_like).await?;
 
         self.folder_ids.push(folder_id);
         Ok(self)
     }
 
     /// If set, folders with the given id will be removed from the tree structure. This is useful when you want to include a folder in the tree structure with some of it's subfolders excluded.
-    pub async fn without_folder<'a, T: TryInto<PCloudFolder>>(
+    pub async fn without_folder<'a, T: FolderDescriptor>(
         mut self,
         folder_like: T,
-    ) -> Result<Self, Box<dyn 'a + std::error::Error>>
-    where
-        T::Error: 'a + std::error::Error,
-    {
-        let folder: PCloudFolder = folder_like.try_into()?;
-        let folder_id = self.client.get_folder_id(folder).await?;
+    ) -> Result<Self, Box<dyn 'a + std::error::Error>> {
+        let folder_id = self.client.get_folder_id(folder_like).await?;
 
         self.exclude_folder_ids.push(folder_id);
         Ok(self)
     }
 
     /// If set, contents of the folder with the given id will appear as root elements of the tree. The folder itself does not appear as a part of the structure.
-    pub async fn with_content_of_folder<'a, T: TryInto<PCloudFolder>>(
+    pub async fn with_content_of_folder<'a, T: FolderDescriptor>(
         mut self,
         folder_like: T,
-    ) -> Result<Self, Box<dyn 'a + std::error::Error>>
-    where
-        T::Error: 'a + std::error::Error,
-    {
-        let folder: PCloudFolder = folder_like.try_into()?;
-        let folder_id = self.client.get_folder_id(folder).await?;
+    ) -> Result<Self, Box<dyn 'a + std::error::Error>> {
+        let folder_id = self.client.get_folder_id(folder_like).await?;
 
         self.folder_id = Some(folder_id);
         Ok(self)
@@ -300,21 +333,15 @@ pub struct CopyFileRequestBuilder {
 
 #[allow(dead_code)]
 impl CopyFileRequestBuilder {
-    pub(crate) fn copy_file<'a, S: TryInto<PCloudFile>, T: TryInto<PCloudFolder>>(
+    pub(crate) fn copy_file<'a, S: FileDescriptor, T: FolderDescriptor>(
         client: &PCloudClient,
         file_like: S,
         target_folder_like: T,
-    ) -> Result<CopyFileRequestBuilder, Box<dyn 'a + std::error::Error>>
-    where
-        T::Error: 'a + std::error::Error,
-        S::Error: 'a + std::error::Error,
-    {
-        let source: PCloudFile = file_like.try_into()?;
-        let target: PCloudFolder = target_folder_like.try_into()?;
+    ) -> Result<CopyFileRequestBuilder, Box<dyn 'a + std::error::Error>> {
+        let source = file_like.to_file()?;
+        let target = target_folder_like.to_folder()?;
 
-        if (source.file_id.is_some() || source.path.is_some())
-            && (target.folder_id.is_some() || target.path.is_some())
-        {
+        if !source.is_empty() && !target.is_empty() {
             Ok(CopyFileRequestBuilder {
                 from_path: source.path,
                 from_file_id: source.file_id,
@@ -446,21 +473,15 @@ pub struct MoveFileRequestBuilder {
 
 #[allow(dead_code)]
 impl MoveFileRequestBuilder {
-    pub(crate) fn move_file<'a, S: TryInto<PCloudFile>, T: TryInto<PCloudFolder>>(
+    pub(crate) fn move_file<'a, S: FileDescriptor, T: FolderDescriptor>(
         client: &PCloudClient,
         file_like: S,
         target_folder_like: T,
-    ) -> Result<MoveFileRequestBuilder, Box<dyn 'a + std::error::Error>>
-    where
-        T::Error: 'a + std::error::Error,
-        S::Error: 'a + std::error::Error,
-    {
-        let source: PCloudFile = file_like.try_into()?;
-        let target: PCloudFolder = target_folder_like.try_into()?;
+    ) -> Result<MoveFileRequestBuilder, Box<dyn 'a + std::error::Error>> {
+        let source = file_like.to_file()?;
+        let target = target_folder_like.to_folder()?;
 
-        if (source.file_id.is_some() || source.path.is_some())
-            && (target.folder_id.is_some() || target.path.is_some())
-        {
+        if !source.is_empty() && !target.is_empty() {
             Ok(MoveFileRequestBuilder {
                 from_path: source.path,
                 from_file_id: source.file_id,
@@ -553,16 +574,13 @@ pub struct UploadRequestBuilder {
 
 #[allow(dead_code)]
 impl UploadRequestBuilder {
-    pub(crate) fn into_folder<'a, T: TryInto<PCloudFolder>>(
+    pub(crate) fn into_folder<'a, T: FolderDescriptor>(
         client: &PCloudClient,
         folder_like: T,
-    ) -> Result<UploadRequestBuilder, Box<dyn 'a + std::error::Error>>
-    where
-        T::Error: 'a + std::error::Error,
-    {
-        let f = folder_like.try_into()?;
+    ) -> Result<UploadRequestBuilder, Box<dyn 'a + std::error::Error>> {
+        let f = folder_like.to_folder()?;
 
-        if f.folder_id.is_some() || f.path.is_some() {
+        if !f.is_empty() {
             Ok(UploadRequestBuilder {
                 folder_id: f.folder_id,
                 path: f.path,
@@ -692,16 +710,13 @@ pub struct PublicFileLinkRequestBuilder {
 
 #[allow(dead_code)]
 impl PublicFileLinkRequestBuilder {
-    pub(crate) fn for_file<'a, T: TryInto<PCloudFile>>(
+    pub(crate) fn for_file<'a, T: FileDescriptor>(
         client: &PCloudClient,
         file_like: T,
-    ) -> Result<PublicFileLinkRequestBuilder, Box<dyn 'a + std::error::Error>>
-    where
-        T::Error: 'a + std::error::Error,
-    {
-        let f: PCloudFile = file_like.try_into()?;
+    ) -> Result<PublicFileLinkRequestBuilder, Box<dyn 'a + std::error::Error>> {
+        let f: PCloudFile = file_like.to_file()?;
 
-        if f.file_id.is_some() || f.path.is_some() {
+        if !f.is_empty() {
             Ok(PublicFileLinkRequestBuilder {
                 file_id: f.file_id,
                 path: f.path,
@@ -881,16 +896,13 @@ pub struct ListRevisionsRequestBuilder {
 }
 
 impl ListRevisionsRequestBuilder {
-    pub(crate) fn for_file<'a, T: TryInto<PCloudFile>>(
+    pub(crate) fn for_file<'a, T: FileDescriptor>(
         client: &PCloudClient,
         file_like: T,
-    ) -> Result<ListRevisionsRequestBuilder, Box<dyn 'a + std::error::Error>>
-    where
-        T::Error: 'a + std::error::Error,
-    {
-        let f = file_like.try_into()?;
+    ) -> Result<ListRevisionsRequestBuilder, Box<dyn 'a + std::error::Error>> {
+        let f = file_like.to_file()?;
 
-        if f.file_id.is_some() || f.path.is_some() {
+        if !f.is_empty() {
             Ok(ListRevisionsRequestBuilder {
                 file_id: f.file_id,
                 path: f.path,
@@ -938,16 +950,13 @@ pub struct ChecksumFileRequestBuilder {
 
 #[allow(dead_code)]
 impl ChecksumFileRequestBuilder {
-    pub(crate) fn for_file<'a, T: TryInto<PCloudFile>>(
+    pub(crate) fn for_file<'a, T: FileDescriptor>(
         client: &PCloudClient,
         file_like: T,
-    ) -> Result<ChecksumFileRequestBuilder, Box<dyn 'a + std::error::Error>>
-    where
-        T::Error: 'a + std::error::Error,
-    {
-        let f = file_like.try_into()?;
+    ) -> Result<ChecksumFileRequestBuilder, Box<dyn 'a + std::error::Error>> {
+        let f = file_like.to_file()?;
 
-        if f.file_id.is_some() || f.path.is_some() {
+        if !f.is_empty() {
             Ok(ChecksumFileRequestBuilder {
                 file_id: f.file_id,
                 path: f.path,
@@ -1009,16 +1018,13 @@ pub struct FileDeleteRequestBuilder {
 
 #[allow(dead_code)]
 impl FileDeleteRequestBuilder {
-    pub(crate) fn for_file<'a, T: TryInto<PCloudFile>>(
+    pub(crate) fn for_file<'a, T: FileDescriptor>(
         client: &PCloudClient,
         file_like: T,
-    ) -> Result<FileDeleteRequestBuilder, Box<dyn 'a + std::error::Error>>
-    where
-        T::Error: 'a + std::error::Error,
-    {
-        let f = file_like.try_into()?;
+    ) -> Result<FileDeleteRequestBuilder, Box<dyn 'a + std::error::Error>> {
+        let f = file_like.to_file()?;
 
-        if f.file_id.is_some() || f.path.is_some() {
+        if !f.is_empty() {
             Ok(FileDeleteRequestBuilder {
                 file_id: f.file_id,
                 path: f.path,
@@ -1072,16 +1078,13 @@ pub struct FileDownloadRequestBuilder {
 
 #[allow(dead_code)]
 impl FileDownloadRequestBuilder {
-    pub(crate) fn for_file<'a, T: TryInto<PCloudFile>>(
+    pub(crate) fn for_file<'a, T: FileDescriptor>(
         client: &PCloudClient,
         file_like: T,
-    ) -> Result<FileDownloadRequestBuilder, Box<dyn 'a + std::error::Error>>
-    where
-        T::Error: 'a + std::error::Error,
-    {
-        let f = file_like.try_into()?;
+    ) -> Result<FileDownloadRequestBuilder, Box<dyn 'a + std::error::Error>> {
+        let f = file_like.to_file()?;
 
-        if f.file_id.is_some() || f.path.is_some() {
+        if !f.is_empty() {
             Ok(FileDownloadRequestBuilder {
                 file_id: f.file_id,
                 path: f.path,
@@ -1145,16 +1148,13 @@ pub struct FileStatRequestBuilder {
 
 #[allow(dead_code)]
 impl FileStatRequestBuilder {
-    pub(crate) fn for_file<'a, T: TryInto<PCloudFile>>(
+    pub(crate) fn for_file<'a, T: FileDescriptor>(
         client: &PCloudClient,
         file_like: T,
-    ) -> Result<FileStatRequestBuilder, Box<dyn 'a + std::error::Error>>
-    where
-        T::Error: 'a + std::error::Error,
-    {
-        let f = file_like.try_into()?;
+    ) -> Result<FileStatRequestBuilder, Box<dyn 'a + std::error::Error>> {
+        let f = file_like.to_file()?;
 
-        if f.file_id.is_some() || f.path.is_some() {
+        if !f.is_empty() {
             Ok(FileStatRequestBuilder {
                 file_id: f.file_id,
                 path: f.path,
@@ -1226,10 +1226,12 @@ impl PCloudClient {
     }
 
     /// Returns the file id of a PCloudFile. If the file_id is given, just return it. If a path is given, fetch the metadata with the file id.
-    pub(crate) async fn get_file_id(
+    pub(crate) async fn get_file_id<T: FileDescriptor>(
         &self,
-        file: PCloudFile,
+        file_like: T,
     ) -> Result<u64, Box<dyn std::error::Error>> {
+        let file = file_like.to_file()?;
+
         if let Some(file_id) = file.file_id {
             Ok(file_id)
         } else {
@@ -1248,101 +1250,75 @@ impl PCloudClient {
     }
 
     /// Fetches the download link for the latest file revision and directly downloads the file.  Accepts either a file id (u64), a file path (String) or any other pCloud object describing a file (like Metadata)
-    pub async fn download_file<'a, T: TryInto<PCloudFile>>(
+    pub async fn download_file<'a, T: FileDescriptor>(
         &self,
         file_like: T,
-    ) -> Result<Response, Box<dyn 'a + std::error::Error>>
-    where
-        T::Error: 'a + std::error::Error,
-    {
+    ) -> Result<Response, Box<dyn 'a + std::error::Error>> {
         let link = self.get_download_link_for_file(file_like)?.get().await?;
         self.download_link(&link).await
     }
 
     /// Copies the given file to the given folder. Either set a target folder id and then the target with with_new_name or give a full new file path as target path
-    pub fn copy_file<'a, S: TryInto<PCloudFile>, T: TryInto<PCloudFolder>>(
+    pub fn copy_file<'a, S: FileDescriptor, T: FolderDescriptor>(
         &self,
         file_like: S,
         target_folder_like: T,
-    ) -> Result<CopyFileRequestBuilder, Box<dyn 'a + std::error::Error>>
-    where
-        S::Error: 'a + std::error::Error,
-        T::Error: 'a + std::error::Error,
-    {
+    ) -> Result<CopyFileRequestBuilder, Box<dyn 'a + std::error::Error>> {
         CopyFileRequestBuilder::copy_file(self, file_like, target_folder_like)
     }
 
     /// Moves the given file to the given folder. Either set a target folder id and then the target with with_new_name or give a full new file path as target path
-    pub fn move_file<'a, S: TryInto<PCloudFile>, T: TryInto<PCloudFolder>>(
+    pub fn move_file<'a, S: FileDescriptor, T: FolderDescriptor>(
         &self,
         file_like: S,
         target_folder_like: T,
-    ) -> Result<MoveFileRequestBuilder, Box<dyn 'a + std::error::Error>>
-    where
-        S::Error: 'a + std::error::Error,
-        T::Error: 'a + std::error::Error,
-    {
+    ) -> Result<MoveFileRequestBuilder, Box<dyn 'a + std::error::Error>> {
         MoveFileRequestBuilder::move_file(self, file_like, target_folder_like)
     }
 
     /// Lists revisions for a given fileid / path
-    pub async fn list_file_revisions<'a, S: TryInto<PCloudFile>>(
+    pub async fn list_file_revisions<'a, S: FileDescriptor>(
         &self,
         file_like: S,
-    ) -> Result<RevisionList, Box<dyn 'a + std::error::Error>>
-    where
-        S::Error: 'a + std::error::Error,
-    {
+    ) -> Result<RevisionList, Box<dyn 'a + std::error::Error>> {
         ListRevisionsRequestBuilder::for_file(self, file_like)?
             .get()
             .await
     }
 
     /// Returns the metadata of a file. Accepts either a file id (u64), a file path (String) or any other pCloud object describing a file (like Metadata)
-    pub async fn get_file_metadata<'a, T: TryInto<PCloudFile>>(
+    pub async fn get_file_metadata<'a, T: FileDescriptor>(
         &self,
         file_like: T,
-    ) -> Result<FileOrFolderStat, Box<dyn 'a + std::error::Error>>
-    where
-        T::Error: 'a + std::error::Error,
-    {
+    ) -> Result<FileOrFolderStat, Box<dyn 'a + std::error::Error>> {
         FileStatRequestBuilder::for_file(self, file_like)?
             .get()
             .await
     }
 
     /// Requests deleting a file. Accepts either a file id (u64), a file path (String) or any other pCloud object describing a file (like Metadata)
-    pub async fn delete_file<'a, T: TryInto<PCloudFile>>(
+    pub async fn delete_file<'a, T: FileDescriptor>(
         &self,
         file_like: T,
-    ) -> Result<FileOrFolderStat, Box<dyn 'a + std::error::Error>>
-    where
-        T::Error: 'a + std::error::Error,
-    {
+    ) -> Result<FileOrFolderStat, Box<dyn 'a + std::error::Error>> {
         FileDeleteRequestBuilder::for_file(self, file_like)?
             .execute()
             .await
     }
 
     /// Requests the checksums of a file. Accepts either a file id (u64), a file path (String) or any other pCloud object describing a file (like Metadata)
-    pub fn checksum_file<'a, T: TryInto<PCloudFile>>(
+    pub fn checksum_file<'a, T: FileDescriptor>(
         &self,
         file_like: T,
-    ) -> Result<ChecksumFileRequestBuilder, Box<dyn 'a + std::error::Error>>
-    where
-        T::Error: 'a + std::error::Error,
-    {
+    ) -> Result<ChecksumFileRequestBuilder, Box<dyn 'a + std::error::Error>> {
         ChecksumFileRequestBuilder::for_file(self, file_like)
     }
 
     /// Returns the public link for a pCloud file. Accepts either a file id (u64), a file path (String) or any other pCloud object describing a file (like Metadata)
-    pub fn get_public_link_for_file<'a, T: TryInto<PCloudFile>>(
+    pub fn get_public_link_for_file<'a, T: FileDescriptor>(
         &self,
         file_like: T,
-    ) -> Result<PublicFileLinkRequestBuilder, Box<dyn 'a + std::error::Error>>
-    where
-        T::Error: 'a + std::error::Error,
-    {
+    ) -> Result<PublicFileLinkRequestBuilder, Box<dyn 'a + std::error::Error>> {
         PublicFileLinkRequestBuilder::for_file(&self, file_like)
     }
 
@@ -1357,24 +1333,18 @@ impl PCloudClient {
     }
 
     /// Returns the download link for a file. Accepts either a file id (u64), a file path (String) or any other pCloud object describing a file (like Metadata)
-    pub fn get_download_link_for_file<'a, T: TryInto<PCloudFile>>(
+    pub fn get_download_link_for_file<'a, T: FileDescriptor>(
         &self,
         file_like: T,
-    ) -> Result<FileDownloadRequestBuilder, Box<dyn 'a + std::error::Error>>
-    where
-        T::Error: 'a + std::error::Error,
-    {
+    ) -> Result<FileDownloadRequestBuilder, Box<dyn 'a + std::error::Error>> {
         FileDownloadRequestBuilder::for_file(self, file_like)
     }
 
     /// Uploads files into a folder. Accepts either a folder id (u64), a folder path (String) or any other pCloud object describing a folder (like Metadata)
-    pub fn upload_file_into_folder<'a, T: TryInto<PCloudFolder>>(
+    pub fn upload_file_into_folder<'a, T: FolderDescriptor>(
         &self,
         folder_like: T,
-    ) -> Result<UploadRequestBuilder, Box<dyn 'a + std::error::Error>>
-    where
-        T::Error: 'a + std::error::Error,
-    {
+    ) -> Result<UploadRequestBuilder, Box<dyn 'a + std::error::Error>> {
         UploadRequestBuilder::into_folder(self, folder_like)
     }
 

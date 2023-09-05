@@ -6,13 +6,66 @@ use crate::{
 };
 use log::debug;
 
-/// Generic description of a PCloud folder. Either by its file id (preferred) or by its path
+/// Generic description of a pCloud folder. Either by its file id (preferred) or by its path
+pub trait FolderDescriptor {
+    /// Convert the descriptor into a PCloudFolder
+    fn to_folder(self) -> Result<PCloudFolder, PCloudResult>;
+}
+
+impl FolderDescriptor for u64 {
+    fn to_folder(self) -> Result<PCloudFolder, PCloudResult> {
+        Ok(self.into())
+    }
+}
+
+impl FolderDescriptor for &u64 {
+    fn to_folder(self) -> Result<PCloudFolder, PCloudResult> {
+        Ok(self.into())
+    }
+}
+
+impl FolderDescriptor for String {
+    fn to_folder(self) -> Result<PCloudFolder, PCloudResult> {
+        self.try_into()
+    }
+}
+
+impl FolderDescriptor for &str {
+    fn to_folder(self) -> Result<PCloudFolder, PCloudResult> {
+        self.try_into()
+    }
+}
+
+impl FolderDescriptor for &Metadata {
+    fn to_folder(self) -> Result<PCloudFolder, PCloudResult> {
+        self.try_into()
+    }
+}
+
+impl FolderDescriptor for &FileOrFolderStat {
+    fn to_folder(self) -> Result<PCloudFolder, PCloudResult> {
+        self.try_into()
+    }
+}
+
+impl FolderDescriptor for PCloudFolder {
+    fn to_folder(self) -> Result<PCloudFolder, PCloudResult> {
+        Ok(self)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct PCloudFolder {
     /// ID of the target folder
     pub folder_id: Option<u64>,
     /// Path of the target folder
     pub path: Option<String>,
+}
+
+impl PCloudFolder {
+    pub fn is_empty(&self) -> bool {
+        self.folder_id.is_none() && self.path.is_none()
+    }
 }
 
 impl Display for PCloudFolder {
@@ -134,16 +187,13 @@ pub struct DeleteFolderRequestBuilder {
 
 #[allow(dead_code)]
 impl DeleteFolderRequestBuilder {
-    pub(crate) fn for_folder<'a, T: TryInto<PCloudFolder>>(
+    pub(crate) fn for_folder<'a, T: FolderDescriptor>(
         client: &PCloudClient,
         folder_like: T,
-    ) -> Result<DeleteFolderRequestBuilder, Box<dyn 'a + std::error::Error>>
-    where
-        T::Error: 'a + std::error::Error,
-    {
-        let f = folder_like.try_into()?;
+    ) -> Result<DeleteFolderRequestBuilder, Box<dyn 'a + std::error::Error>> {
+        let f = folder_like.to_folder()?;
 
-        if f.folder_id.is_some() || f.path.is_some() {
+        if !f.is_empty() {
             Ok(DeleteFolderRequestBuilder {
                 folder_id: f.folder_id,
                 path: f.path,
@@ -228,17 +278,14 @@ pub struct CreateFolderRequestBuilder {
 
 #[allow(dead_code)]
 impl CreateFolderRequestBuilder {
-    pub(crate) fn for_folder<'a, T: TryInto<PCloudFolder>>(
+    pub(crate) fn for_folder<'a, T: FolderDescriptor>(
         client: &PCloudClient,
         folder_like_parent: T,
         name: &str,
-    ) -> Result<CreateFolderRequestBuilder, Box<dyn 'a + std::error::Error>>
-    where
-        T::Error: 'a + std::error::Error,
-    {
-        let f = folder_like_parent.try_into()?;
+    ) -> Result<CreateFolderRequestBuilder, Box<dyn 'a + std::error::Error>> {
+        let f = folder_like_parent.to_folder()?;
 
-        if f.folder_id.is_some() || f.path.is_some() {
+        if !f.is_empty() {
             Ok(CreateFolderRequestBuilder {
                 folder_id: f.folder_id,
                 path: f.path,
@@ -317,21 +364,15 @@ pub struct CopyFolderRequestBuilder {
 #[allow(dead_code)]
 impl CopyFolderRequestBuilder {
     /// Copies a folder identified by folderid or path to either topath or tofolderid.
-    pub(crate) fn copy_folder<'a, S: TryInto<PCloudFolder>, T: TryInto<PCloudFolder>>(
+    pub(crate) fn copy_folder<'a, S: FolderDescriptor, T: FolderDescriptor>(
         client: &PCloudClient,
         folder_like: S,
         target_folder_like: T,
-    ) -> Result<CopyFolderRequestBuilder, Box<dyn 'a + std::error::Error>>
-    where
-        T::Error: 'a + std::error::Error,
-        S::Error: 'a + std::error::Error,
-    {
-        let source: PCloudFolder = folder_like.try_into()?;
-        let target: PCloudFolder = target_folder_like.try_into()?;
+    ) -> Result<CopyFolderRequestBuilder, Box<dyn 'a + std::error::Error>> {
+        let source: PCloudFolder = folder_like.to_folder()?;
+        let target: PCloudFolder = target_folder_like.to_folder()?;
 
-        if (source.folder_id.is_some() || source.path.is_some())
-            && (target.folder_id.is_some() || target.path.is_some())
-        {
+        if !source.is_empty() && !target.is_empty() {
             Ok(CopyFolderRequestBuilder {
                 from_path: source.path,
                 from_folder_id: source.folder_id,
@@ -437,21 +478,15 @@ pub struct MoveFolderRequestBuilder {
 #[allow(dead_code)]
 impl MoveFolderRequestBuilder {
     /// Renames (and/or moves) a folder identified by folderid or path to either topath (if topath is a existing folder to place source folder without new name for the folder it MUST end with slash - /newpath/) or tofolderid/toname (one or both can be provided).
-    pub(crate) fn move_folder<'a, S: TryInto<PCloudFolder>, T: TryInto<PCloudFolder>>(
+    pub(crate) fn move_folder<'a, S: FolderDescriptor, T: FolderDescriptor>(
         client: &PCloudClient,
         folder_like: S,
         target_folder_like: T,
-    ) -> Result<MoveFolderRequestBuilder, Box<dyn 'a + std::error::Error>>
-    where
-        T::Error: 'a + std::error::Error,
-        S::Error: 'a + std::error::Error,
-    {
-        let source: PCloudFolder = folder_like.try_into()?;
-        let target: PCloudFolder = target_folder_like.try_into()?;
+    ) -> Result<MoveFolderRequestBuilder, Box<dyn 'a + std::error::Error>> {
+        let source: PCloudFolder = folder_like.to_folder()?;
+        let target: PCloudFolder = target_folder_like.to_folder()?;
 
-        if (source.folder_id.is_some() || source.path.is_some())
-            && (target.folder_id.is_some() || target.path.is_some())
-        {
+        if !source.is_empty() && !target.is_empty() {
             Ok(MoveFolderRequestBuilder {
                 from_path: source.path,
                 from_folder_id: source.folder_id,
@@ -531,16 +566,13 @@ pub struct ListFolderRequestBuilder {
 
 #[allow(dead_code)]
 impl ListFolderRequestBuilder {
-    pub(crate) fn for_folder<'a, T: TryInto<PCloudFolder>>(
+    pub(crate) fn for_folder<'a, T: FolderDescriptor>(
         client: &PCloudClient,
         folder_like: T,
-    ) -> Result<ListFolderRequestBuilder, Box<dyn 'a + std::error::Error>>
-    where
-        T::Error: 'a + std::error::Error,
-    {
-        let f = folder_like.try_into()?;
+    ) -> Result<ListFolderRequestBuilder, Box<dyn 'a + std::error::Error>> {
+        let f = folder_like.to_folder()?;
 
-        if f.folder_id.is_some() || f.path.is_some() {
+        if !f.is_empty() {
             Ok(ListFolderRequestBuilder {
                 folder_id: f.folder_id,
                 path: f.path,
@@ -627,70 +659,55 @@ impl ListFolderRequestBuilder {
 #[allow(dead_code)]
 impl PCloudClient {
     /// Lists the content of a folder. Accepts either a folder id (u64), a folder path (String) or any other pCloud object describing a folder (like Metadata)
-    pub fn list_folder<'a, T: TryInto<PCloudFolder>>(
+    pub fn list_folder<'a, T: FolderDescriptor>(
         &self,
         folder_like: T,
-    ) -> Result<ListFolderRequestBuilder, Box<dyn 'a + std::error::Error>>
-    where
-        T::Error: 'a + std::error::Error,
-    {
+    ) -> Result<ListFolderRequestBuilder, Box<dyn 'a + std::error::Error>> {
         ListFolderRequestBuilder::for_folder(self, folder_like)
     }
 
     /// Creates a new folder in a parent folder. Accepts either a folder id (u64), a folder path (String) or any other pCloud object describing a folder (like Metadata)
-    pub fn create_folder<'a, T: TryInto<PCloudFolder>>(
+    pub fn create_folder<'a, T: FolderDescriptor>(
         &self,
         parent_folder_like: T,
         name: &str,
-    ) -> Result<CreateFolderRequestBuilder, Box<dyn 'a + std::error::Error>>
-    where
-        T::Error: 'a + std::error::Error,
-    {
+    ) -> Result<CreateFolderRequestBuilder, Box<dyn 'a + std::error::Error>> {
         CreateFolderRequestBuilder::for_folder(self, parent_folder_like, name)
     }
 
     /// Deletes a folder. Either only if empty or recursively. Accepts either a folder id (u64), a folder path (String) or any other pCloud object describing a folder (like Metadata)
-    pub fn delete_folder<'a, T: TryInto<PCloudFolder>>(
+    pub fn delete_folder<'a, T: FolderDescriptor>(
         &self,
         folder_like: T,
-    ) -> Result<DeleteFolderRequestBuilder, Box<dyn 'a + std::error::Error>>
-    where
-        T::Error: 'a + std::error::Error,
-    {
+    ) -> Result<DeleteFolderRequestBuilder, Box<dyn 'a + std::error::Error>> {
         DeleteFolderRequestBuilder::for_folder(self, folder_like)
     }
 
     /// Copies a folder identified by folderid or path to either topath or tofolderid.
-    pub fn copy_folder<'a, S: TryInto<PCloudFolder>, T: TryInto<PCloudFolder>>(
+    pub fn copy_folder<'a, S: FolderDescriptor, T: FolderDescriptor>(
         &self,
         folder_like: S,
         target_folder_like: T,
-    ) -> Result<CopyFolderRequestBuilder, Box<dyn 'a + std::error::Error>>
-    where
-        S::Error: 'a + std::error::Error,
-        T::Error: 'a + std::error::Error,
-    {
+    ) -> Result<CopyFolderRequestBuilder, Box<dyn 'a + std::error::Error>> {
         CopyFolderRequestBuilder::copy_folder(self, folder_like, target_folder_like)
     }
 
     /// Renames (and/or moves) a folder identified by folderid or path to either topath (if topath is a existing folder to place source folder without new name for the folder it MUST end with slash - /newpath/) or tofolderid/toname (one or both can be provided).
-    pub fn move_folder<'a, S: TryInto<PCloudFolder>, T: TryInto<PCloudFolder>>(
+    pub fn move_folder<'a, S: FolderDescriptor, T: FolderDescriptor>(
         &self,
         folder_like: S,
         target_folder_like: T,
-    ) -> Result<MoveFolderRequestBuilder, Box<dyn 'a + std::error::Error>>
-    where
-        S::Error: 'a + std::error::Error,
-        T::Error: 'a + std::error::Error,
-    {
+    ) -> Result<MoveFolderRequestBuilder, Box<dyn 'a + std::error::Error>> {
         MoveFolderRequestBuilder::move_folder(self, folder_like, target_folder_like)
     }
 
     /// Returns the folder id of a PCloudFolder. If the folder_id is given, just return it. If a path is given, fetch the metadata with the folder id.
-    pub(crate) async fn get_folder_id(
+    pub(crate) async fn get_folder_id<T: FolderDescriptor>(
         &self,
-        folder: PCloudFolder,
+        folder_like: T,
     ) -> Result<u64, Box<dyn std::error::Error>> {
+        let folder = folder_like.to_folder()?;
+
         if let Some(folder_id) = folder.folder_id {
             Ok(folder_id)
         } else {

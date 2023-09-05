@@ -10,7 +10,7 @@ use uuid::Uuid;
 
 use crate::{
     file_ops::Tree,
-    folder_ops::PCloudFolder,
+    folder_ops::FolderDescriptor,
     pcloud_client::PCloudClient,
     pcloud_model::{FileOrFolderStat, SaveZipProgressResponse, WithPCloudResult},
 };
@@ -92,15 +92,12 @@ impl InitiateSavezipRequestBuilder {
     }
 
     /// Target folder and file name of the target zip file
-    pub fn to_folder<'a, T: TryInto<PCloudFolder>>(
+    pub fn to_folder<'a, T: FolderDescriptor>(
         self,
         folder_like: T,
         file_name: &str,
-    ) -> Result<SaveZipRequestBuilder, Box<dyn 'a + std::error::Error>>
-    where
-        T::Error: 'a + std::error::Error,
-    {
-        let f: PCloudFolder = folder_like.try_into()?;
+    ) -> Result<SaveZipRequestBuilder, Box<dyn 'a + std::error::Error>> {
+        let f = folder_like.to_folder()?;
 
         Ok(SaveZipRequestBuilder {
             client: self.client,
