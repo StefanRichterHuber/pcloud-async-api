@@ -54,6 +54,12 @@ impl FolderDescriptor for PCloudFolder {
     }
 }
 
+impl FolderDescriptor for &PCloudFolder {
+    fn to_folder(self) -> Result<PCloudFolder, PCloudResult> {
+        Ok(self.clone())
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct PCloudFolder {
     /// ID of the target folder
@@ -190,7 +196,7 @@ impl DeleteFolderRequestBuilder {
     pub(crate) fn for_folder<'a, T: FolderDescriptor>(
         client: &PCloudClient,
         folder_like: T,
-    ) -> Result<DeleteFolderRequestBuilder, Box<dyn 'a + std::error::Error>> {
+    ) -> Result<DeleteFolderRequestBuilder, Box<dyn 'a + std::error::Error + Send + Sync>> {
         let f = folder_like.to_folder()?;
 
         if !f.is_empty() {
@@ -207,7 +213,8 @@ impl DeleteFolderRequestBuilder {
     /// Deletes the folder and all its content recursively
     pub async fn delete_recursive(
         self,
-    ) -> Result<pcloud_model::FolderRecursivlyDeleted, Box<dyn std::error::Error>> {
+    ) -> Result<pcloud_model::FolderRecursivlyDeleted, Box<dyn std::error::Error + Send + Sync>>
+    {
         let url = format!("{}/deletefolderrecursive", self.client.api_host);
 
         let mut r = self.client.client.get(url);
@@ -236,7 +243,7 @@ impl DeleteFolderRequestBuilder {
     /// Deletes the folder, only if  it is empty
     pub async fn delete_folder_if_empty(
         self,
-    ) -> Result<pcloud_model::FileOrFolderStat, Box<dyn std::error::Error>> {
+    ) -> Result<pcloud_model::FileOrFolderStat, Box<dyn std::error::Error + Send + Sync>> {
         let url = format!("{}/deletefolder", self.client.api_host);
 
         let mut r = self.client.client.get(url);
@@ -282,7 +289,7 @@ impl CreateFolderRequestBuilder {
         client: &PCloudClient,
         folder_like_parent: T,
         name: &str,
-    ) -> Result<CreateFolderRequestBuilder, Box<dyn 'a + std::error::Error>> {
+    ) -> Result<CreateFolderRequestBuilder, Box<dyn 'a + std::error::Error + Send + Sync>> {
         let f = folder_like_parent.to_folder()?;
 
         if !f.is_empty() {
@@ -307,7 +314,7 @@ impl CreateFolderRequestBuilder {
     /// Creates the folder
     pub async fn execute(
         self,
-    ) -> Result<pcloud_model::FileOrFolderStat, Box<dyn std::error::Error>> {
+    ) -> Result<pcloud_model::FileOrFolderStat, Box<dyn std::error::Error + Send + Sync>> {
         let url = if self.if_not_exists {
             format!("{}/createfolderifnotexists", self.client.api_host)
         } else {
@@ -368,7 +375,7 @@ impl CopyFolderRequestBuilder {
         client: &PCloudClient,
         folder_like: S,
         target_folder_like: T,
-    ) -> Result<CopyFolderRequestBuilder, Box<dyn 'a + std::error::Error>> {
+    ) -> Result<CopyFolderRequestBuilder, Box<dyn 'a + std::error::Error + Send + Sync>> {
         let source: PCloudFolder = folder_like.to_folder()?;
         let target: PCloudFolder = target_folder_like.to_folder()?;
 
@@ -410,7 +417,7 @@ impl CopyFolderRequestBuilder {
     /// Execute the copy operation
     pub async fn execute(
         self,
-    ) -> Result<pcloud_model::FileOrFolderStat, Box<dyn std::error::Error>> {
+    ) -> Result<pcloud_model::FileOrFolderStat, Box<dyn std::error::Error + Send + Sync>> {
         let mut r = self
             .client
             .client
@@ -482,7 +489,7 @@ impl MoveFolderRequestBuilder {
         client: &PCloudClient,
         folder_like: S,
         target_folder_like: T,
-    ) -> Result<MoveFolderRequestBuilder, Box<dyn 'a + std::error::Error>> {
+    ) -> Result<MoveFolderRequestBuilder, Box<dyn 'a + std::error::Error + Send + Sync>> {
         let source: PCloudFolder = folder_like.to_folder()?;
         let target: PCloudFolder = target_folder_like.to_folder()?;
 
@@ -509,7 +516,7 @@ impl MoveFolderRequestBuilder {
     // Execute the move operation
     pub async fn execute(
         self,
-    ) -> Result<pcloud_model::FileOrFolderStat, Box<dyn std::error::Error>> {
+    ) -> Result<pcloud_model::FileOrFolderStat, Box<dyn std::error::Error + Send + Sync>> {
         let mut r = self
             .client
             .client
@@ -569,7 +576,7 @@ impl ListFolderRequestBuilder {
     pub(crate) fn for_folder<'a, T: FolderDescriptor>(
         client: &PCloudClient,
         folder_like: T,
-    ) -> Result<ListFolderRequestBuilder, Box<dyn 'a + std::error::Error>> {
+    ) -> Result<ListFolderRequestBuilder, Box<dyn 'a + std::error::Error + Send + Sync>> {
         let f = folder_like.to_folder()?;
 
         if !f.is_empty() {
@@ -612,7 +619,9 @@ impl ListFolderRequestBuilder {
     }
 
     /// Execute list operation
-    pub async fn get(self) -> Result<pcloud_model::FileOrFolderStat, Box<dyn std::error::Error>> {
+    pub async fn get(
+        self,
+    ) -> Result<pcloud_model::FileOrFolderStat, Box<dyn std::error::Error + Send + Sync>> {
         let mut r = self
             .client
             .client
@@ -662,7 +671,7 @@ impl PCloudClient {
     pub fn list_folder<'a, T: FolderDescriptor>(
         &self,
         folder_like: T,
-    ) -> Result<ListFolderRequestBuilder, Box<dyn 'a + std::error::Error>> {
+    ) -> Result<ListFolderRequestBuilder, Box<dyn 'a + std::error::Error + Send + Sync>> {
         ListFolderRequestBuilder::for_folder(self, folder_like)
     }
 
@@ -671,7 +680,7 @@ impl PCloudClient {
         &self,
         parent_folder_like: T,
         name: &str,
-    ) -> Result<CreateFolderRequestBuilder, Box<dyn 'a + std::error::Error>> {
+    ) -> Result<CreateFolderRequestBuilder, Box<dyn 'a + std::error::Error + Send + Sync>> {
         CreateFolderRequestBuilder::for_folder(self, parent_folder_like, name)
     }
 
@@ -679,7 +688,7 @@ impl PCloudClient {
     pub fn delete_folder<'a, T: FolderDescriptor>(
         &self,
         folder_like: T,
-    ) -> Result<DeleteFolderRequestBuilder, Box<dyn 'a + std::error::Error>> {
+    ) -> Result<DeleteFolderRequestBuilder, Box<dyn 'a + std::error::Error + Send + Sync>> {
         DeleteFolderRequestBuilder::for_folder(self, folder_like)
     }
 
@@ -688,7 +697,7 @@ impl PCloudClient {
         &self,
         folder_like: S,
         target_folder_like: T,
-    ) -> Result<CopyFolderRequestBuilder, Box<dyn 'a + std::error::Error>> {
+    ) -> Result<CopyFolderRequestBuilder, Box<dyn 'a + std::error::Error + Send + Sync>> {
         CopyFolderRequestBuilder::copy_folder(self, folder_like, target_folder_like)
     }
 
@@ -697,7 +706,7 @@ impl PCloudClient {
         &self,
         folder_like: S,
         target_folder_like: T,
-    ) -> Result<MoveFolderRequestBuilder, Box<dyn 'a + std::error::Error>> {
+    ) -> Result<MoveFolderRequestBuilder, Box<dyn 'a + std::error::Error + Send + Sync>> {
         MoveFolderRequestBuilder::move_folder(self, folder_like, target_folder_like)
     }
 
@@ -705,7 +714,7 @@ impl PCloudClient {
     pub(crate) async fn get_folder_id<T: FolderDescriptor>(
         &self,
         folder_like: T,
-    ) -> Result<u64, Box<dyn std::error::Error>> {
+    ) -> Result<u64, Box<dyn std::error::Error + Send + Sync>> {
         let folder = folder_like.to_folder()?;
 
         if let Some(folder_id) = folder.folder_id {

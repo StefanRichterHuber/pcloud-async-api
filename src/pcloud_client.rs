@@ -67,7 +67,7 @@ impl PCloudClient {
     pub async fn with_oauth(
         host: &str,
         oauth2: &str,
-    ) -> Result<PCloudClient, Box<dyn std::error::Error>> {
+    ) -> Result<PCloudClient, Box<dyn std::error::Error + Send + Sync>> {
         let builder = reqwest::ClientBuilder::new();
 
         let mut headers = reqwest::header::HeaderMap::new();
@@ -92,7 +92,7 @@ impl PCloudClient {
         host: &str,
         username: &str,
         password: &str,
-    ) -> Result<PCloudClient, Box<dyn std::error::Error>> {
+    ) -> Result<PCloudClient, Box<dyn std::error::Error + Send + Sync>> {
         let token = PCloudClient::login(host, username, password).await?;
 
         let builder = reqwest::ClientBuilder::new();
@@ -120,7 +120,7 @@ impl PCloudClient {
         host: &str,
         username: &str,
         password: &str,
-    ) -> Result<String, Box<dyn std::error::Error>> {
+    ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
         let url = format!("{}/userinfo?getauth=1", host);
 
         let client = reqwest::ClientBuilder::new().build()?;
@@ -145,7 +145,7 @@ impl PCloudClient {
         client: &Client,
         api_host: &str,
         token: &str,
-    ) -> Result<bool, Box<dyn std::error::Error>> {
+    ) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
         let mut r = client.get(format!("{}/logout", api_host));
 
         r = r.query(&[("auth", token)]);
@@ -177,7 +177,7 @@ impl PCloudClient {
         client: &reqwest::Client,
         host: &str,
         session_token: Option<String>,
-    ) -> Result<String, Box<dyn std::error::Error>> {
+    ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
         let url = format!("{}/getapiserver", host);
 
         let mut r = client.get(url);
@@ -204,7 +204,9 @@ impl PCloudClient {
     }
 
     /// Get user info
-    pub async fn get_user_info(&self) -> Result<UserInfo, Box<dyn std::error::Error>> {
+    pub async fn get_user_info(
+        &self,
+    ) -> Result<UserInfo, Box<dyn std::error::Error + Send + Sync>> {
         let url = format!("{}/userinfo", self.api_host);
         let mut r = self.client.get(url);
 

@@ -60,6 +60,12 @@ impl FileDescriptor for PCloudFile {
     }
 }
 
+impl FileDescriptor for &PCloudFile {
+    fn to_file(self) -> Result<PCloudFile, PCloudResult> {
+        Ok(self.clone())
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct PCloudFile {
     /// ID of the target file
@@ -236,7 +242,10 @@ impl Tree {
     }
 
     /// Adds a file or folder from a metadata object
-    pub async fn with(self, source: &Metadata) -> Result<Self, Box<dyn std::error::Error>> {
+    pub async fn with(
+        self,
+        source: &Metadata,
+    ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         if source.isfolder {
             self.with_folder(source).await
         } else {
@@ -245,7 +254,10 @@ impl Tree {
     }
 
     /// Excludes a file or folder
-    pub async fn without(self, source: &Metadata) -> Result<Self, Box<dyn std::error::Error>> {
+    pub async fn without(
+        self,
+        source: &Metadata,
+    ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         if source.isfolder {
             self.without_folder(source).await
         } else {
@@ -257,7 +269,7 @@ impl Tree {
     pub async fn with_file<'a, T: FileDescriptor>(
         mut self,
         file_like: T,
-    ) -> Result<Self, Box<dyn 'a + std::error::Error>> {
+    ) -> Result<Self, Box<dyn 'a + std::error::Error + Send + Sync>> {
         let file_id = self.client.get_file_id(file_like).await?;
         self.file_ids.push(file_id);
         Ok(self)
@@ -267,7 +279,7 @@ impl Tree {
     pub async fn without_file<'a, T: FileDescriptor>(
         mut self,
         file_like: T,
-    ) -> Result<Self, Box<dyn 'a + std::error::Error>> {
+    ) -> Result<Self, Box<dyn 'a + std::error::Error + Send + Sync>> {
         let file_id = self.client.get_file_id(file_like).await?;
 
         self.exclude_file_ids.push(file_id);
@@ -278,7 +290,7 @@ impl Tree {
     pub async fn with_folder<'a, T: FolderDescriptor>(
         mut self,
         folder_like: T,
-    ) -> Result<Self, Box<dyn 'a + std::error::Error>> {
+    ) -> Result<Self, Box<dyn 'a + std::error::Error + Send + Sync>> {
         let folder_id = self.client.get_folder_id(folder_like).await?;
 
         self.folder_ids.push(folder_id);
@@ -289,7 +301,7 @@ impl Tree {
     pub async fn without_folder<'a, T: FolderDescriptor>(
         mut self,
         folder_like: T,
-    ) -> Result<Self, Box<dyn 'a + std::error::Error>> {
+    ) -> Result<Self, Box<dyn 'a + std::error::Error + Send + Sync>> {
         let folder_id = self.client.get_folder_id(folder_like).await?;
 
         self.exclude_folder_ids.push(folder_id);
@@ -300,7 +312,7 @@ impl Tree {
     pub async fn with_content_of_folder<'a, T: FolderDescriptor>(
         mut self,
         folder_like: T,
-    ) -> Result<Self, Box<dyn 'a + std::error::Error>> {
+    ) -> Result<Self, Box<dyn 'a + std::error::Error + Send + Sync>> {
         let folder_id = self.client.get_folder_id(folder_like).await?;
 
         self.folder_id = Some(folder_id);
@@ -337,7 +349,7 @@ impl CopyFileRequestBuilder {
         client: &PCloudClient,
         file_like: S,
         target_folder_like: T,
-    ) -> Result<CopyFileRequestBuilder, Box<dyn 'a + std::error::Error>> {
+    ) -> Result<CopyFileRequestBuilder, Box<dyn 'a + std::error::Error + Send + Sync>> {
         let source = file_like.to_file()?;
         let target = target_folder_like.to_folder()?;
 
@@ -400,7 +412,7 @@ impl CopyFileRequestBuilder {
     // Execute the copy operation
     pub async fn execute(
         self,
-    ) -> Result<pcloud_model::FileOrFolderStat, Box<dyn std::error::Error>> {
+    ) -> Result<pcloud_model::FileOrFolderStat, Box<dyn std::error::Error + Send + Sync>> {
         let mut r = self
             .client
             .client
@@ -477,7 +489,7 @@ impl MoveFileRequestBuilder {
         client: &PCloudClient,
         file_like: S,
         target_folder_like: T,
-    ) -> Result<MoveFileRequestBuilder, Box<dyn 'a + std::error::Error>> {
+    ) -> Result<MoveFileRequestBuilder, Box<dyn 'a + std::error::Error + Send + Sync>> {
         let source = file_like.to_file()?;
         let target = target_folder_like.to_folder()?;
 
@@ -511,7 +523,7 @@ impl MoveFileRequestBuilder {
     // Execute the move operation
     pub async fn execute(
         self,
-    ) -> Result<pcloud_model::FileOrFolderStat, Box<dyn std::error::Error>> {
+    ) -> Result<pcloud_model::FileOrFolderStat, Box<dyn std::error::Error + Send + Sync>> {
         let mut r = self
             .client
             .client
@@ -577,7 +589,7 @@ impl UploadRequestBuilder {
     pub(crate) fn into_folder<'a, T: FolderDescriptor>(
         client: &PCloudClient,
         folder_like: T,
-    ) -> Result<UploadRequestBuilder, Box<dyn 'a + std::error::Error>> {
+    ) -> Result<UploadRequestBuilder, Box<dyn 'a + std::error::Error + Send + Sync>> {
         let f = folder_like.to_folder()?;
 
         if !f.is_empty() {
@@ -636,7 +648,7 @@ impl UploadRequestBuilder {
     }
 
     // Finally uploads the files
-    pub async fn upload(self) -> Result<UploadedFile, Box<dyn std::error::Error>> {
+    pub async fn upload(self) -> Result<UploadedFile, Box<dyn std::error::Error + Send + Sync>> {
         if self.files.is_empty() {
             // Short cut operation if no files are configured to upload
             debug!("Requested file upload, but no files are added to the request.");
@@ -713,7 +725,7 @@ impl PublicFileLinkRequestBuilder {
     pub(crate) fn for_file<'a, T: FileDescriptor>(
         client: &PCloudClient,
         file_like: T,
-    ) -> Result<PublicFileLinkRequestBuilder, Box<dyn 'a + std::error::Error>> {
+    ) -> Result<PublicFileLinkRequestBuilder, Box<dyn 'a + std::error::Error + Send + Sync>> {
         let f: PCloudFile = file_like.to_file()?;
 
         if !f.is_empty() {
@@ -773,7 +785,7 @@ impl PublicFileLinkRequestBuilder {
         self
     }
 
-    pub async fn get(self) -> Result<PublicFileLink, Box<dyn std::error::Error>> {
+    pub async fn get(self) -> Result<PublicFileLink, Box<dyn std::error::Error + Send + Sync>> {
         let mut r = self
             .client
             .client
@@ -862,7 +874,9 @@ impl PublicFileDownloadRequestBuilder {
     }
 
     /// Create file download link
-    pub async fn get(self) -> Result<pcloud_model::DownloadLink, Box<dyn std::error::Error>> {
+    pub async fn get(
+        self,
+    ) -> Result<pcloud_model::DownloadLink, Box<dyn std::error::Error + Send + Sync>> {
         let mut r = self
             .client
             .client
@@ -899,7 +913,7 @@ impl ListRevisionsRequestBuilder {
     pub(crate) fn for_file<'a, T: FileDescriptor>(
         client: &PCloudClient,
         file_like: T,
-    ) -> Result<ListRevisionsRequestBuilder, Box<dyn 'a + std::error::Error>> {
+    ) -> Result<ListRevisionsRequestBuilder, Box<dyn 'a + std::error::Error + Send + Sync>> {
         let f = file_like.to_file()?;
 
         if !f.is_empty() {
@@ -914,7 +928,7 @@ impl ListRevisionsRequestBuilder {
     }
 
     /// Executes the request
-    pub async fn get(self) -> Result<RevisionList, Box<dyn std::error::Error>> {
+    pub async fn get(self) -> Result<RevisionList, Box<dyn std::error::Error + Send + Sync>> {
         let mut r = self
             .client
             .client
@@ -953,7 +967,7 @@ impl ChecksumFileRequestBuilder {
     pub(crate) fn for_file<'a, T: FileDescriptor>(
         client: &PCloudClient,
         file_like: T,
-    ) -> Result<ChecksumFileRequestBuilder, Box<dyn 'a + std::error::Error>> {
+    ) -> Result<ChecksumFileRequestBuilder, Box<dyn 'a + std::error::Error + Send + Sync>> {
         let f = file_like.to_file()?;
 
         if !f.is_empty() {
@@ -975,7 +989,9 @@ impl ChecksumFileRequestBuilder {
     }
 
     /// Executes the request
-    pub async fn get(self) -> Result<pcloud_model::FileChecksums, Box<dyn std::error::Error>> {
+    pub async fn get(
+        self,
+    ) -> Result<pcloud_model::FileChecksums, Box<dyn std::error::Error + Send + Sync>> {
         let mut r = self
             .client
             .client
@@ -1021,7 +1037,7 @@ impl FileDeleteRequestBuilder {
     pub(crate) fn for_file<'a, T: FileDescriptor>(
         client: &PCloudClient,
         file_like: T,
-    ) -> Result<FileDeleteRequestBuilder, Box<dyn 'a + std::error::Error>> {
+    ) -> Result<FileDeleteRequestBuilder, Box<dyn 'a + std::error::Error + Send + Sync>> {
         let f = file_like.to_file()?;
 
         if !f.is_empty() {
@@ -1037,7 +1053,7 @@ impl FileDeleteRequestBuilder {
 
     pub async fn execute(
         self,
-    ) -> Result<pcloud_model::FileOrFolderStat, Box<dyn std::error::Error>> {
+    ) -> Result<pcloud_model::FileOrFolderStat, Box<dyn std::error::Error + Send + Sync>> {
         let mut r = self
             .client
             .client
@@ -1081,7 +1097,7 @@ impl FileDownloadRequestBuilder {
     pub(crate) fn for_file<'a, T: FileDescriptor>(
         client: &PCloudClient,
         file_like: T,
-    ) -> Result<FileDownloadRequestBuilder, Box<dyn 'a + std::error::Error>> {
+    ) -> Result<FileDownloadRequestBuilder, Box<dyn 'a + std::error::Error + Send + Sync>> {
         let f = file_like.to_file()?;
 
         if !f.is_empty() {
@@ -1103,7 +1119,9 @@ impl FileDownloadRequestBuilder {
     }
 
     /// Fetch the download link for the file
-    pub async fn get(self) -> Result<pcloud_model::DownloadLink, Box<dyn std::error::Error>> {
+    pub async fn get(
+        self,
+    ) -> Result<pcloud_model::DownloadLink, Box<dyn std::error::Error + Send + Sync>> {
         let mut r = self
             .client
             .client
@@ -1151,7 +1169,7 @@ impl FileStatRequestBuilder {
     pub(crate) fn for_file<'a, T: FileDescriptor>(
         client: &PCloudClient,
         file_like: T,
-    ) -> Result<FileStatRequestBuilder, Box<dyn 'a + std::error::Error>> {
+    ) -> Result<FileStatRequestBuilder, Box<dyn 'a + std::error::Error + Send + Sync>> {
         let f = file_like.to_file()?;
 
         if !f.is_empty() {
@@ -1173,7 +1191,9 @@ impl FileStatRequestBuilder {
     }
 
     /// Fetch the file metadata
-    pub async fn get(self) -> Result<pcloud_model::FileOrFolderStat, Box<dyn std::error::Error>> {
+    pub async fn get(
+        self,
+    ) -> Result<pcloud_model::FileOrFolderStat, Box<dyn std::error::Error + Send + Sync>> {
         let mut r = self
             .client
             .client
@@ -1211,7 +1231,7 @@ impl PCloudClient {
     pub async fn download_link(
         &self,
         link: &pcloud_model::DownloadLink,
-    ) -> Result<Response, Box<dyn std::error::Error>> {
+    ) -> Result<Response, Box<dyn std::error::Error + Send + Sync>> {
         if let Some(url) = link.into_url() {
             debug!("Downloading file link {}", url);
 
@@ -1229,7 +1249,7 @@ impl PCloudClient {
     pub(crate) async fn get_file_id<T: FileDescriptor>(
         &self,
         file_like: T,
-    ) -> Result<u64, Box<dyn std::error::Error>> {
+    ) -> Result<u64, Box<dyn std::error::Error + Send + Sync>> {
         let file = file_like.to_file()?;
 
         if let Some(file_id) = file.file_id {
@@ -1253,7 +1273,7 @@ impl PCloudClient {
     pub async fn download_file<'a, T: FileDescriptor>(
         &self,
         file_like: T,
-    ) -> Result<Response, Box<dyn 'a + std::error::Error>> {
+    ) -> Result<Response, Box<dyn 'a + std::error::Error + Send + Sync>> {
         let link = self.get_download_link_for_file(file_like)?.get().await?;
         self.download_link(&link).await
     }
@@ -1263,7 +1283,7 @@ impl PCloudClient {
         &self,
         file_like: S,
         target_folder_like: T,
-    ) -> Result<CopyFileRequestBuilder, Box<dyn 'a + std::error::Error>> {
+    ) -> Result<CopyFileRequestBuilder, Box<dyn 'a + std::error::Error + Send + Sync>> {
         CopyFileRequestBuilder::copy_file(self, file_like, target_folder_like)
     }
 
@@ -1272,7 +1292,7 @@ impl PCloudClient {
         &self,
         file_like: S,
         target_folder_like: T,
-    ) -> Result<MoveFileRequestBuilder, Box<dyn 'a + std::error::Error>> {
+    ) -> Result<MoveFileRequestBuilder, Box<dyn 'a + std::error::Error + Send + Sync>> {
         MoveFileRequestBuilder::move_file(self, file_like, target_folder_like)
     }
 
@@ -1280,7 +1300,7 @@ impl PCloudClient {
     pub async fn list_file_revisions<'a, S: FileDescriptor>(
         &self,
         file_like: S,
-    ) -> Result<RevisionList, Box<dyn 'a + std::error::Error>> {
+    ) -> Result<RevisionList, Box<dyn 'a + std::error::Error + Send + Sync>> {
         ListRevisionsRequestBuilder::for_file(self, file_like)?
             .get()
             .await
@@ -1290,7 +1310,7 @@ impl PCloudClient {
     pub async fn get_file_metadata<'a, T: FileDescriptor>(
         &self,
         file_like: T,
-    ) -> Result<FileOrFolderStat, Box<dyn 'a + std::error::Error>> {
+    ) -> Result<FileOrFolderStat, Box<dyn 'a + std::error::Error + Send + Sync>> {
         FileStatRequestBuilder::for_file(self, file_like)?
             .get()
             .await
@@ -1300,7 +1320,7 @@ impl PCloudClient {
     pub async fn delete_file<'a, T: FileDescriptor>(
         &self,
         file_like: T,
-    ) -> Result<FileOrFolderStat, Box<dyn 'a + std::error::Error>> {
+    ) -> Result<FileOrFolderStat, Box<dyn 'a + std::error::Error + Send + Sync>> {
         FileDeleteRequestBuilder::for_file(self, file_like)?
             .execute()
             .await
@@ -1310,7 +1330,7 @@ impl PCloudClient {
     pub fn checksum_file<'a, T: FileDescriptor>(
         &self,
         file_like: T,
-    ) -> Result<ChecksumFileRequestBuilder, Box<dyn 'a + std::error::Error>> {
+    ) -> Result<ChecksumFileRequestBuilder, Box<dyn 'a + std::error::Error + Send + Sync>> {
         ChecksumFileRequestBuilder::for_file(self, file_like)
     }
 
@@ -1318,7 +1338,7 @@ impl PCloudClient {
     pub fn get_public_link_for_file<'a, T: FileDescriptor>(
         &self,
         file_like: T,
-    ) -> Result<PublicFileLinkRequestBuilder, Box<dyn 'a + std::error::Error>> {
+    ) -> Result<PublicFileLinkRequestBuilder, Box<dyn 'a + std::error::Error + Send + Sync>> {
         PublicFileLinkRequestBuilder::for_file(&self, file_like)
     }
 
@@ -1326,7 +1346,7 @@ impl PCloudClient {
     pub async fn get_public_download_link_for_file(
         &self,
         link: &pcloud_model::PublicFileLink,
-    ) -> Result<pcloud_model::DownloadLink, Box<dyn std::error::Error>> {
+    ) -> Result<pcloud_model::DownloadLink, Box<dyn std::error::Error + Send + Sync>> {
         PublicFileDownloadRequestBuilder::for_public_file(self, link.code.clone().unwrap().as_str())
             .get()
             .await
@@ -1336,7 +1356,7 @@ impl PCloudClient {
     pub fn get_download_link_for_file<'a, T: FileDescriptor>(
         &self,
         file_like: T,
-    ) -> Result<FileDownloadRequestBuilder, Box<dyn 'a + std::error::Error>> {
+    ) -> Result<FileDownloadRequestBuilder, Box<dyn 'a + std::error::Error + Send + Sync>> {
         FileDownloadRequestBuilder::for_file(self, file_like)
     }
 
@@ -1344,7 +1364,7 @@ impl PCloudClient {
     pub fn upload_file_into_folder<'a, T: FolderDescriptor>(
         &self,
         folder_like: T,
-    ) -> Result<UploadRequestBuilder, Box<dyn 'a + std::error::Error>> {
+    ) -> Result<UploadRequestBuilder, Box<dyn 'a + std::error::Error + Send + Sync>> {
         UploadRequestBuilder::into_folder(self, folder_like)
     }
 

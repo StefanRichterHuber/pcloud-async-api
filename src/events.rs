@@ -45,7 +45,7 @@ impl GetFileHistoryRequestBuilder {
     pub fn create<'a, T: FileDescriptor>(
         client: &PCloudClient,
         file_like: T,
-    ) -> Result<GetFileHistoryRequestBuilder, Box<dyn 'a + std::error::Error>> {
+    ) -> Result<GetFileHistoryRequestBuilder, Box<dyn 'a + std::error::Error + Send + Sync>> {
         let file = file_like.to_file()?;
 
         let result = GetFileHistoryRequestBuilder {
@@ -57,7 +57,7 @@ impl GetFileHistoryRequestBuilder {
     }
 
     /// returns event history of a file identified by fileid. File might be a deleted one. The output format is the same as of diff method.
-    pub async fn get(self) -> Result<FileHistory, Box<dyn std::error::Error>> {
+    pub async fn get(self) -> Result<FileHistory, Box<dyn std::error::Error + Send + Sync>> {
         let url = format!("{}/getfilehistory", self.client.api_host);
         let mut r = self.client.client.get(url);
 
@@ -153,7 +153,7 @@ impl DiffRequestBuilder {
     async fn stream_once(
         self,
         tx: &Sender<DiffEntry>,
-    ) -> Result<Option<u64>, Box<dyn std::error::Error>> {
+    ) -> Result<Option<u64>, Box<dyn std::error::Error + Send + Sync>> {
         let diff_id = self.diff_id.clone();
         let diffs = self.get().await?;
 
@@ -231,7 +231,7 @@ impl DiffRequestBuilder {
     }
 
     /// Fetches the events. No matter you configure the limit, not all events could be fetched at once. Therefore one has to call repeatedly with the diffid of the last result set in the next call.
-    pub async fn get(self) -> Result<Diff, Box<dyn std::error::Error>> {
+    pub async fn get(self) -> Result<Diff, Box<dyn std::error::Error + Send + Sync>> {
         let url = format!("{}/diff", self.client.api_host);
         let mut r = self.client.client.get(url);
 
@@ -280,7 +280,7 @@ impl PCloudClient {
     pub async fn get_file_history<'a, T: FileDescriptor>(
         &self,
         file_like: T,
-    ) -> Result<FileHistory, Box<dyn 'a + std::error::Error>> {
+    ) -> Result<FileHistory, Box<dyn 'a + std::error::Error + Send + Sync>> {
         let result = GetFileHistoryRequestBuilder::create(self, file_like)?
             .get()
             .await?;

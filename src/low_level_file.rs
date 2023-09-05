@@ -60,7 +60,7 @@ impl InitiatePCloudFileOpenRequest {
     pub async fn by_file_id<'a, T: FileDescriptor>(
         self,
         file_like: T,
-    ) -> Result<PCloudFileOpenRequest, Box<dyn 'a + std::error::Error>> {
+    ) -> Result<PCloudFileOpenRequest, Box<dyn 'a + std::error::Error + Send + Sync>> {
         let file = file_like.to_file()?;
         let file_id = self.client.get_file_id(file).await?;
 
@@ -91,7 +91,7 @@ impl InitiatePCloudFileOpenRequest {
         self,
         folder_like: T,
         file_name: &str,
-    ) -> Result<PCloudFileOpenRequest, Box<dyn 'a + std::error::Error>> {
+    ) -> Result<PCloudFileOpenRequest, Box<dyn 'a + std::error::Error + Send + Sync>> {
         let folder = folder_like.to_folder()?;
         let folder_id = self.client.get_folder_id(folder).await?;
 
@@ -129,7 +129,7 @@ impl PCloudFileOpenRequest {
     }
 
     /// Performs the request to open the file
-    pub async fn open(self) -> Result<OpenPCloudFile, Box<dyn std::error::Error>> {
+    pub async fn open(self) -> Result<OpenPCloudFile, Box<dyn std::error::Error + Send + Sync>> {
         let mut r = self
             .client
             .client
@@ -193,7 +193,7 @@ impl OpenPCloudFile {
     async fn close_file(
         client: &PCloudClient,
         fd: u64,
-    ) -> Result<FileCloseResponse, Box<dyn std::error::Error>> {
+    ) -> Result<FileCloseResponse, Box<dyn std::error::Error + Send + Sync>> {
         let mut r = client.client.get(format!("{}/file_close", client.api_host));
 
         r = r.query(&[("fd", fd)]);
@@ -211,7 +211,9 @@ impl OpenPCloudFile {
     }
 
     /// Close this file (Called by drop)
-    async fn close(mut self) -> Result<FileCloseResponse, Box<dyn std::error::Error>> {
+    async fn close(
+        mut self,
+    ) -> Result<FileCloseResponse, Box<dyn std::error::Error + Send + Sync>> {
         let result = Self::close_file(&self.client, self.fd).await?;
         self.open = false;
         Ok(result)
@@ -221,7 +223,7 @@ impl OpenPCloudFile {
     pub async fn write<T: Into<Body>>(
         &self,
         body: T,
-    ) -> Result<FileWriteResponse, Box<dyn std::error::Error>> {
+    ) -> Result<FileWriteResponse, Box<dyn std::error::Error + Send + Sync>> {
         let mut r = self
             .client
             .client
