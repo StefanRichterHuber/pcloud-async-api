@@ -32,7 +32,7 @@ impl GetZipRequestBuilder {
     }
 
     /// Starts creating a zip file from the given files and download it directly
-    pub async fn download(self) -> Result<Response, Box<dyn std::error::Error>> {
+    pub async fn download(self) -> Result<Response, Box<dyn std::error::Error + Send + Sync>> {
         let mut r = self
             .client
             .client
@@ -96,7 +96,7 @@ impl InitiateSavezipRequestBuilder {
         self,
         folder_like: T,
         file_name: &str,
-    ) -> Result<SaveZipRequestBuilder, Box<dyn 'a + std::error::Error>> {
+    ) -> Result<SaveZipRequestBuilder, Box<dyn 'a + std::error::Error + Send + Sync>> {
         let f = folder_like.to_folder()?;
 
         Ok(SaveZipRequestBuilder {
@@ -115,7 +115,7 @@ impl SaveZipRequestBuilder {
     async fn fetch_progress(
         client: &PCloudClient,
         progress_hash: &str,
-    ) -> Result<SaveZipProgressResponse, Box<dyn std::error::Error>> {
+    ) -> Result<SaveZipProgressResponse, Box<dyn std::error::Error + Send + Sync>> {
         let mut r = client
             .client
             .get(format!("{}/savezipprogress", client.api_host));
@@ -133,7 +133,7 @@ impl SaveZipRequestBuilder {
         client: &PCloudClient,
         progress_hash: &str,
         tx: &Sender<SaveZipProgressResponse>,
-    ) -> Result<u64, Box<dyn std::error::Error>> {
+    ) -> Result<u64, Box<dyn std::error::Error + Send + Sync>> {
         let progress = SaveZipRequestBuilder::fetch_progress(client, progress_hash).await?;
         let remaining = progress.totalfiles - progress.files;
         tx.send(progress).await?;
@@ -145,8 +145,10 @@ impl SaveZipRequestBuilder {
     pub async fn execute_with_progress_notification(
         self,
         polling_interval: Duration,
-    ) -> Result<(FileOrFolderStat, Receiver<SaveZipProgressResponse>), Box<dyn std::error::Error>>
-    {
+    ) -> Result<
+        (FileOrFolderStat, Receiver<SaveZipProgressResponse>),
+        Box<dyn std::error::Error + Send + Sync>,
+    > {
         let progress_hash = Uuid::new_v4().to_string();
         let progress_client = self.client.clone();
 
@@ -188,7 +190,9 @@ impl SaveZipRequestBuilder {
     }
 
     /// Starts creating a zip file in the user's filesystem.
-    pub async fn execute(self) -> Result<FileOrFolderStat, Box<dyn std::error::Error>> {
+    pub async fn execute(
+        self,
+    ) -> Result<FileOrFolderStat, Box<dyn std::error::Error + Send + Sync>> {
         let mut r = self
             .client
             .client
@@ -237,7 +241,7 @@ impl PCloudClient {
     pub async fn download_zip_of_files(
         &self,
         tree: Tree,
-    ) -> Result<Response, Box<dyn std::error::Error>> {
+    ) -> Result<Response, Box<dyn std::error::Error + Send + Sync>> {
         GetZipRequestBuilder::zip(self, tree).download().await
     }
 }

@@ -11,7 +11,8 @@ use tokio::time::{sleep, Duration};
 use uuid::Uuid;
 
 async fn get_client(
-) -> Result<pcloud_async_api::pcloud_client::PCloudClient, Box<dyn std::error::Error>> {
+) -> Result<pcloud_async_api::pcloud_client::PCloudClient, Box<dyn std::error::Error + Send + Sync>>
+{
     let host = std::env::var("PCLOUD_HOST")?;
     let user = std::env::var("PCLOUD_USER")?;
     let pw = std::env::var("PCLOUD_PASSWORD")?;
@@ -25,7 +26,7 @@ async fn get_client(
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn test_event_stream() -> Result<(), Box<dyn std::error::Error>> {
+async fn test_event_stream() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // Lets wait some time to avoid previous events to be shown (due to times not in sync between client and server)
     sleep(Duration::from_millis(10000)).await;
 
@@ -118,7 +119,7 @@ async fn test_event_stream() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_file_revisions() -> Result<(), Box<dyn std::error::Error>> {
+async fn test_file_revisions() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let folder_name = Uuid::new_v4().to_string();
 
     let pcloud = get_client().await?;
@@ -187,7 +188,7 @@ async fn test_file_revisions() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_file_operations() -> Result<(), Box<dyn std::error::Error>> {
+async fn test_file_operations() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let folder_name = Uuid::new_v4().to_string();
 
     let pcloud = get_client().await?;
@@ -343,7 +344,7 @@ async fn test_file_operations() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_zip_download() -> Result<(), Box<dyn std::error::Error>> {
+async fn test_zip_download() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let folder_name = Uuid::new_v4().to_string();
 
     let pcloud = get_client().await?;
