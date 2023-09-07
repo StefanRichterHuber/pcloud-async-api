@@ -167,14 +167,24 @@ async fn test_file_revisions() -> Result<(), Box<dyn std::error::Error + Send + 
     assert_eq!(PCloudResult::Ok, file_rev.result);
     assert_eq!(1, file_rev.revisions.len());
 
+    let rev_id = file_rev.revisions.get(0).unwrap().revisionid;
+    let path = format!("/{}/{}", folder_name, "test.txt");
     // Download old rev
     let link = pcloud
-        .get_download_link_for_file(format!("/{}/{}", folder_name, "test.txt"))?
-        .with_revision(file_rev.revisions.get(0).unwrap().revisionid)
+        .get_download_link_for_file(path.as_str())?
+        .with_revision(rev_id)
         .get()
         .await?;
     let old_content = pcloud.download_link(&link).await?.text().await?;
     assert_eq!("This is nice test content", old_content);
+
+    // Download old rev -> other syntax
+    let old_content_2nd = pcloud
+        .download_file((path.as_str(), rev_id))
+        .await?
+        .text()
+        .await?;
+    assert_eq!("This is nice test content", old_content_2nd);
 
     // Delete test folder
     let deletefolder_result = pcloud

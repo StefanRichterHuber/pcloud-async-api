@@ -12,7 +12,7 @@ use chrono::{DateTime, TimeZone};
 use log::debug;
 use reqwest::{Body, RequestBuilder, Response};
 
-/// Generic description of a pCloud File. Either by its file id (preferred) or by its path
+/// Generic description of a pCloud File. Either by its file id (preferred) or by its path. Optionally give tuple with id / path and file revision
 pub trait FileDescriptor {
     /// Convert the descriptor into a PCloudFile
     fn to_file(self) -> Result<PCloudFile, PCloudResult>;
@@ -66,12 +66,81 @@ impl FileDescriptor for &PCloudFile {
     }
 }
 
+/// A file path and a revision id
+impl FileDescriptor for (String, u64) {
+    fn to_file(self) -> Result<PCloudFile, PCloudResult> {
+        Ok(PCloudFile {
+            revision: Some(self.1),
+            ..self.0.into()
+        })
+    }
+}
+
+/// A file path and a revision id
+impl FileDescriptor for (&str, u64) {
+    fn to_file(self) -> Result<PCloudFile, PCloudResult> {
+        Ok(PCloudFile {
+            revision: Some(self.1),
+            ..self.0.into()
+        })
+    }
+}
+
+/// A file id and a revision id
+impl FileDescriptor for (u64, u64) {
+    fn to_file(self) -> Result<PCloudFile, PCloudResult> {
+        Ok(PCloudFile {
+            revision: Some(self.1),
+            ..self.0.into()
+        })
+    }
+}
+
+/// A file id and a revision id
+impl FileDescriptor for (&Metadata, u64) {
+    fn to_file(self) -> Result<PCloudFile, PCloudResult> {
+        Ok(PCloudFile {
+            revision: Some(self.1),
+            ..self.0.try_into()?
+        })
+    }
+}
+
+impl FileDescriptor for (&FileOrFolderStat, u64) {
+    fn to_file(self) -> Result<PCloudFile, PCloudResult> {
+        Ok(PCloudFile {
+            revision: Some(self.1),
+            ..self.0.try_into()?
+        })
+    }
+}
+
+impl FileDescriptor for (&PCloudFile, u64) {
+    fn to_file(self) -> Result<PCloudFile, PCloudResult> {
+        Ok(PCloudFile {
+            revision: Some(self.1),
+            ..self.0.clone()
+        })
+    }
+}
+
+impl FileDescriptor for (PCloudFile, u64) {
+    fn to_file(self) -> Result<PCloudFile, PCloudResult> {
+        Ok(PCloudFile {
+            revision: Some(self.1),
+            ..self.0
+        })
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct PCloudFile {
     /// ID of the target file
     pub(crate) file_id: Option<u64>,
     /// Path of the target file
     pub(crate) path: Option<String>,
+    /// File revision
+    pub(crate) revision: Option<u64>,
 }
 
 impl PCloudFile {
@@ -83,9 +152,17 @@ impl PCloudFile {
 impl Display for PCloudFile {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if let Some(file_id) = self.file_id {
-            write!(f, "{}", file_id)
+            if let Some(revision) = self.revision {
+                write!(f, "{}@{}", file_id, revision)
+            } else {
+                write!(f, "{}", file_id)
+            }
         } else if let Some(path) = &self.path {
-            write!(f, "{}", path)
+            if let Some(revision) = self.revision {
+                write!(f, "{}@{}", path, revision)
+            } else {
+                write!(f, "{}", path)
+            }
         } else {
             write!(f, "[Empty pCloud file descriptor!]")
         }
@@ -98,6 +175,7 @@ impl From<&str> for PCloudFile {
         PCloudFile {
             file_id: None,
             path: Some(value.to_string()),
+            revision: None,
         }
     }
 }
@@ -108,6 +186,7 @@ impl From<String> for PCloudFile {
         PCloudFile {
             file_id: None,
             path: Some(value),
+            revision: None,
         }
     }
 }
@@ -118,6 +197,7 @@ impl From<u64> for PCloudFile {
         PCloudFile {
             file_id: Some(value),
             path: None,
+            revision: None,
         }
     }
 }
@@ -128,6 +208,7 @@ impl From<&u64> for PCloudFile {
         PCloudFile {
             file_id: Some(value.clone()),
             path: None,
+            revision: None,
         }
     }
 }
@@ -143,6 +224,7 @@ impl TryFrom<&Metadata> for PCloudFile {
             Ok(PCloudFile {
                 file_id: value.fileid,
                 path: None,
+                revision: None,
             })
         }
     }
@@ -270,7 +352,7 @@ impl Tree {
         mut self,
         file_like: T,
     ) -> Result<Self, Box<dyn 'a + std::error::Error + Send + Sync>> {
-        let file_id = self.client.get_file_id(file_like).await?;
+        let (file_id, _) = self.client.get_file_id(file_like).await?;
         self.file_ids.push(file_id);
         Ok(self)
     }
@@ -280,7 +362,7 @@ impl Tree {
         mut self,
         file_like: T,
     ) -> Result<Self, Box<dyn 'a + std::error::Error + Send + Sync>> {
-        let file_id = self.client.get_file_id(file_like).await?;
+        let (file_id, _) = self.client.get_file_id(file_like).await?;
 
         self.exclude_file_ids.push(file_id);
         Ok(self)
@@ -364,7 +446,7 @@ impl CopyFileRequestBuilder {
                 overwrite: true,
                 mtime: None,
                 ctime: None,
-                revision_id: None,
+                revision_id: source.revision,
             })
         } else {
             Err(pcloud_model::PCloudResult::NoFileIdOrPathProvided)?
@@ -501,7 +583,7 @@ impl MoveFileRequestBuilder {
                 to_folder_id: target.folder_id,
                 client: client.clone(),
                 to_name: None,
-                revision_id: None,
+                revision_id: source.revision,
             })
         } else {
             Err(pcloud_model::PCloudResult::NoFileIdOrPathProvided)?
@@ -738,7 +820,7 @@ impl PublicFileLinkRequestBuilder {
                 max_traffic: None,
                 short_link: false,
                 link_password: None,
-                revision_id: None,
+                revision_id: f.revision,
             })
         } else {
             Err(pcloud_model::PCloudResult::NoFileIdOrPathProvided)?
@@ -975,7 +1057,7 @@ impl ChecksumFileRequestBuilder {
                 file_id: f.file_id,
                 path: f.path,
                 client: client.clone(),
-                revision_id: None,
+                revision_id: f.revision,
             })
         } else {
             Err(pcloud_model::PCloudResult::NoFileIdOrPathProvided)?
@@ -1105,7 +1187,7 @@ impl FileDownloadRequestBuilder {
                 file_id: f.file_id,
                 path: f.path,
                 client: client.clone(),
-                revision_id: None,
+                revision_id: f.revision,
             })
         } else {
             Err(pcloud_model::PCloudResult::NoFileIdOrPathProvided)?
@@ -1177,7 +1259,7 @@ impl FileStatRequestBuilder {
                 file_id: f.file_id,
                 path: f.path,
                 client: client.clone(),
-                revision_id: None,
+                revision_id: f.revision,
             })
         } else {
             Err(pcloud_model::PCloudResult::NoFileIdOrPathProvided)?
@@ -1245,15 +1327,16 @@ impl PCloudClient {
         }
     }
 
-    /// Returns the file id of a PCloudFile. If the file_id is given, just return it. If a path is given, fetch the metadata with the file id.
+    /// Returns the file id (and the revision if given) of a PCloudFile. If the file_id is given, just return it. If a path is given, fetch the metadata with the file id.
     pub(crate) async fn get_file_id<T: FileDescriptor>(
         &self,
         file_like: T,
-    ) -> Result<u64, Box<dyn std::error::Error + Send + Sync>> {
+    ) -> Result<(u64, Option<u64>), Box<dyn std::error::Error + Send + Sync>> {
         let file = file_like.to_file()?;
+        let rev = file.revision;
 
         if let Some(file_id) = file.file_id {
-            Ok(file_id)
+            Ok((file_id, rev))
         } else {
             let metadata = self.get_file_metadata(file).await?.metadata.unwrap();
 
@@ -1262,7 +1345,7 @@ impl PCloudClient {
             }
 
             if let Some(file_id) = metadata.fileid {
-                Ok(file_id)
+                Ok((file_id, rev))
             } else {
                 Err(PCloudResult::NoFileIdOrPathProvided)?
             }

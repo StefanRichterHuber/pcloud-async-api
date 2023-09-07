@@ -62,7 +62,7 @@ impl GetFileHistoryRequestBuilder {
         let mut r = self.client.client.get(url);
 
         // Requires a file_id not a file name
-        let file_id = self.client.get_file_id(self.file).await?;
+        let (file_id, _) = self.client.get_file_id(self.file).await?;
 
         r = r.query(&[("fileid", file_id)]);
 
