@@ -11,6 +11,7 @@ env:
   PCLOUD_HOST: ${{ secrets.PCLOUD_HOST }}
   PCLOUD_PASSWORD: ${{ secrets.PCLOUD_PASSWORD }}
   PCLOUD_USER: ${{ secrets.PCLOUD_USER }}
+  RUST_LOG: debug
   
 
 jobs:
