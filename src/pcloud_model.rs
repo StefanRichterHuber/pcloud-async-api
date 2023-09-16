@@ -368,7 +368,7 @@ pub struct Share {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Metadata {
     // is the folderid of the folder the object resides in
-    pub parentfolderid: u64,
+    pub parentfolderid: Option<u64>,
     //  is it a folder(true) or file(false)
     pub isfolder: bool,
     /// is the object owned by the user if ismine is false than four other bool fields are provided: canread, canmodify, candelete, cancreate (cancreate - only for folders). These are user's permissions for this object Also, when ismine is false, userid is provided with the id of the owner of the file/folder.

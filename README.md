@@ -4,6 +4,41 @@
 
 This is Rust client for the pCloud rest api as described in the [pCloud API documention](https://docs.pcloud.com/). It uses async reqwest.
 
+## How to use
+
+Currently no published as crate, you can directly reference this git repository in your `Cargo.toml`
+
+```toml
+[dependencies]
+pcloud-async-api = { git = "https://github.com/StefanRichterHuber/pcloud-async-api" }
+tokio = { version = "1", features = ["full"] }
+
+```
+
+Then start using the library
+
+```rust
+use pcloud_async_api::pcloud_client::PCloudClient;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let host = std::env::var("PCLOUD_HOST")?;
+    let user = std::env::var("PCLOUD_USER")?;
+    let pw = std::env::var("PCLOUD_PASSWORD")?;
+
+    let pcloud = PCloudClient::with_username_and_password(&host, &user, &pw).await?;
+    let folder = pcloud.list_folder("/")?.recursive(true).get().await?;
+
+    // List all files in the main folder
+    for f in folder.metadata.unwrap().contents {
+        println!("{:?}", f);
+    }
+
+    Ok(())
+}
+
+```
+
 ## Entry point
 
 > In some details pCloud treats european customers and international customers differently, especially on checksums. While european customers get SHA-1 and SHA-256 checksums for their files, international customers only get MD5 and SHA-1 checksums. Keep this mind when designing code using checksums. See [pCloud checksums](https://docs.pcloud.com/methods/file/checksumfile.html) for more details.
